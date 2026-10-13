@@ -22,17 +22,16 @@ records) the `sibling` group is not evaluated; the rest still scan there.
 `secret` is matched case-sensitively, the others ignore case.
 
 This file holds the generic groups only: patterns that name nobody. The terms
-private to one owner (a name, a host, a device, a domain, a private repo) live
-outside the repo, in the private list: `$AGENTIK_HYGIENE_PRIVATE` when set and
-not empty, else `${XDG_CONFIG_HOME:-$HOME/.config}/agentik/hygiene-private.tsv`.
-It is UTF-8, one `group<TAB>regex` per line; `#` comments and blank lines are
-skipped. Its patterns are compiled case-insensitively and scanned as the in-file
-ones; a group it names that this file lacks is a new group, one this file has
-gains the patterns. A regex from the list is never printed, not even in an
-error: a bad line is reported by its number. An absent list prints one stderr
-line and the scan runs on the generic groups; `--require-private` makes an
-absent or unreadable list exit 2. While the list is absent, an allowlist entry
-may name a group it would define.
+private to one owner (a name, a host, a domain, a private repo) live outside the
+repo, in the private list: `$AGENTIK_HYGIENE_PRIVATE` when set and not empty,
+else `${XDG_CONFIG_HOME:-$HOME/.config}/agentik/hygiene-private.tsv`. It is UTF-8,
+one `group<TAB>regex` per line; `#` comments and blank lines are skipped. Its
+patterns are compiled case-insensitively and scanned as the in-file ones; a group
+it names that this file lacks is a new group, one this file has gains the
+patterns. A regex from the list is never printed, not even in an error: a bad
+line is reported by its number. An absent list prints one stderr line and the
+scan runs on the generic groups; `--require-private` makes an absent or
+unreadable list exit 2.
 
 Usage: hygiene [--json] [--allow FILE] [--repo DIR] [--require-private]
 Exit 0 when no hit lies outside the allowlist, 2 when one does (or when
@@ -285,10 +284,10 @@ def scan(repo, entries, compiled):
     outside, oversize = [], 0
     for path in files(repo):
         counts = dict.fromkeys(order, 0)
-        lines, big = read_lines(path, os.path.join(repo, path))
-        oversize += big
         live = [(name, rx) for name, rx in compiled
                 if not (name in RECORDS_SKIP and path.startswith(RECORDS))]
+        lines, big = read_lines(path, os.path.join(repo, path))
+        oversize += big
         for line, names in lines:
             hit = set()
             for name, rx in live:
