@@ -51,9 +51,9 @@ doclint:
 # (conventions section 6), three pinned by hash; a re-sync moves the files and these pins together. The copy source is the
 # claude-code-session checkout beside this one, found from `git rev-parse --git-common-dir`
 # (the main checkout's .git, whose parent's parent holds both repos), never a home path.
-# hygiene's pin moved with packet public-r1, which took the private terms out of the file: it reads
-# them from the private list (`$AGENTIK_HYGIENE_PRIVATE`, else the XDG config path), never the repo.
-HYGIENE_SHA = da61ee7e00aac60f7f5cad2693be4276472d3bf93b9d1c01d7c98b4498ffedbf
+# hygiene reads the private terms from the private list (`$AGENTIK_HYGIENE_PRIVATE`, else the XDG
+# config path), never the repo; its pin is the session's canonical copy again (the hygiene-one re-sync).
+HYGIENE_SHA = acc3498d4ad3555b095f7f12b22c1c1257fc7d8f2f2f6055c34bd0a21ec34421
 DOCLINT_SHA = 26eaf2c84aadb822f8d63a0257b063afcc0ba6d9bbcf1d2d856abe4c6388341f
 BOUNDED_SHA = 4fdfdc1df94364d72fdc378acfade979f7be32342c262687931fe49752ac40b2
 
