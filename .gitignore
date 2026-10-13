@@ -1,0 +1,16 @@
+# run artifacts
+*.pyc
+__pycache__/
+.DS_Store
+
+# respeak personal config overrides (docs/config-layers.md)
+.claude/respeak/config.local.yaml
+.respeak.local.yaml
+!examples/layered/**/config.local.yaml
+!examples/layered/**/.respeak.local.yaml
+
+# /respeak:report drafts (written only after a failed post)
+.claude/respeak/drafts/
+
+# scripts/bounded holds this lock while make check runs
+.check.lock*

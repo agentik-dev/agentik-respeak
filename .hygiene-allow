@@ -1,0 +1,45 @@
+# .hygiene-allow: <path-glob>: <group>[,<group>]; `*` stays inside one path segment.
+# Nothing private is allowed here: the terms private to one owner live outside the repo, in
+# scripts/hygiene's private list. No entry covers history/; the packets' entries allow sibling only.
+# sibling hits are the plugin's own name (`respeak`) or a public sibling plugin's name; every
+# entry says why on its own line.
+.claude-plugin/*: sibling                         # the marketplace names the plugin
+plugin/.claude-plugin/*: sibling                  # the manifest names the plugin
+plugin/.claude-plugin/plugin.json: person         # the author field keeps the owner's name
+LICENSE: person                                   # the copyright line names the owner
+.claude/respeak/*: sibling                        # this repo's own respeak config
+.gitignore: sibling                               # ignores respeak's local files
+.python-version: sibling                          # the virtualenv is named for the plugin
+CHANGELOG.md: sibling                             # the plugin's name and its siblings'
+CLAUDE.md: sibling                                # the plugin's name and its agents
+Makefile: sibling                                 # the plugin's name, the provider sibling
+NICE_TO_HAVE.md: sibling                          # the plugin's name and its config directory
+README.md: sibling                                # the plugin's name and its install lines
+design/readme/*: sibling                          # the README's source, the same names
+plugin/agents/*: sibling                          # the agent prompts name the plugin
+assets/*: sibling                                 # the icon's file name
+plugin/config/*: sibling                          # the plugin's defaults name it
+plugin/corpus/*: sibling                          # the lexicon names the plugin
+plugin/corpus/style/*: sibling                    # the style corpus names the plugin
+docs/*: sibling                                   # the user docs name the plugin
+plugin/docs/*: sibling                            # the plugin's docs name it
+examples/layered/*: sibling                       # the fixture's config is respeak's
+examples/layered/home/.claude/respeak/*: sibling  # the fixture's user layer path
+examples/layered/project/.claude/respeak/*: sibling  # the fixture's project layer path
+examples/layered/project/docs/api/*: sibling      # the folder file is `.respeak.yaml`
+examples/layered/project/docs/exec/*: sibling     # the folder file is `.respeak.yaml`
+examples/layered/project/notes/*: sibling         # the folder file is `.respeak.yaml`
+plugin/hooks/*: sibling                           # the hooks name the plugin
+research/sources/*: sibling,email                 # the plugin's name; a quoted example address
+research/synthesis/*: sibling                     # the plugin's name
+scripts/*: sibling                                # the plugin's name and the public siblings
+plugin/scripts/*: sibling,email                   # the plugin's name; a comment's SSH URL form
+plugin/skills/*/*: sibling                        # the skills name the plugin
+tests/*: sibling,lan,email                        # fixture addresses at example domains; a `.local(` method
+.hygiene-allow: sibling                           # this file names the plugin
+design/packets/*.md: sibling                      # the packets name the plugin and its public siblings
+design/packets/rows-*.json: sibling               # the rows name the plugin's repo and packets
+design/review-r6.md: sibling                      # a review of the plugin
+design/review-adv10.md: sibling                   # a review of the plugin
+design/review-adv11.md: sibling                   # a review of the plugin
+design/include-r1.md: sibling                     # the include design names the plugin

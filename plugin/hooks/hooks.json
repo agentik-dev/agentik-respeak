@@ -1,0 +1,40 @@
+{
+  "description": "respeak: lexicon status at session start (only in projects with .claude/respeak/ that set hooks.session_start: true; default false); optional milestone auto-narrative on Stop; per-project opt-in style gate on Write|Edit of Markdown, blocking on what the write introduced (gate.block_on: any gates the whole file). Session overrides: RESPEAK_HOOKS=off, RESPEAK_GATE=off|on, or /respeak:off and /respeak:on.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/lexicon-status.sh\"",
+            "timeout": 10,
+            "statusMessage": "respeak: reading lexicon status"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/stop-narrative.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/respeak-gate.sh\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}

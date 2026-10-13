@@ -1,0 +1,24 @@
+#!/bin/bash
+# Run one of this plugin's python scripts with a PyYAML-capable interpreter
+# (scripts/respeak-python.sh picks it; RESPEAK_PYTHON overrides). The wrapper's
+# name is scripts/py (portfolio entry 26); scripts/respeak-py.sh execs this file
+# for callers outside this repo.
+#
+#   "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-measure.py doc.md --fail-on error
+#   "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-verify-edit.py before.md after.md
+set -u
+as="${RESPEAK_PY_AS:-py}"; unset RESPEAK_PY_AS   # respeak-py.sh names itself in the usage line
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+. "$script_dir/respeak-python.sh"
+if [ -z "$RESPEAK_PY" ]; then
+  echo "respeak-py: no python3 with PyYAML found; set RESPEAK_PYTHON=/path/to/python3 or install PyYAML" >&2
+  exit 2
+fi
+[ $# -ge 1 ] || { echo "usage: $as <script.py> [args...]" >&2; exit 2; }
+script="$1"; shift
+case "$script" in
+  /*) ;;
+  *) script="$script_dir/$script" ;;
+esac
+[ -f "$script" ] || { echo "respeak-py: no such script: $script" >&2; exit 2; }
+exec "$RESPEAK_PY" "$script" "$@"

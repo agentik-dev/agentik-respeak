@@ -1,0 +1,230 @@
+#!/bin/bash
+# Tests for scripts/respeak-check.sh, the command-line and CI form of the
+# gate plus meaning-invariance verification. Bash 3.2 compatible.
+#
+# Run: bash tests/test_check.sh
+set -u
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$HERE/.." && pwd)"
+CHECK="$REPO_ROOT/plugin/scripts/respeak-check.sh"
+pass=0; fail=0
+check() { if [ "$2" -eq "$3" ]; then pass=$((pass + 1)); echo "ok   - $1"; else fail=$((fail + 1)); echo "FAIL - $1 (expected exit $2, got $3)"; fi; }
+check_out() { if printf '%s' "$3" | grep -q -- "$2"; then pass=$((pass + 1)); echo "ok   - $1"; else fail=$((fail + 1)); echo "FAIL - $1 (expected '$2' in: $3)"; fi; }
+
+work="$(mktemp -d)"; work="$(cd "$work" && pwd -P)"
+trap 'rm -rf "$work"' EXIT
+export RESPEAK_CACHE_DIR="$work/cache"
+export CLAUDE_CONFIG_DIR="$work/no-user-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT/plugin"
+unset RESPEAK_GATE RESPEAK_HOOKS CLAUDE_PROJECT_DIR RESPEAK_CONFIG CLAUDE_CODE_SESSION_ID XDG_STATE_HOME 2>/dev/null || true
+
+proj="$work/proj"; mkdir -p "$proj/.claude/respeak" "$proj/docs" "$proj/research"
+printf 'version: 3\ngate: {enabled: true, include: ["**/*.md"], exclude: ["research/**"], fail_on: error}\n' > "$proj/.claude/respeak/config.yaml"
+printf '# Guide\n\nThe release ships on Friday. See [the plan](plan.md) and run `make check`; 3 steps.\n' > "$proj/docs/guide.md"
+printf '# Notes\n\nThis note is load-bearing and stays out of the gate.\n' > "$proj/research/notes.md"
+( cd "$proj" && git init -q && git add -A && git -c user.email=t@example.com -c user.name=t commit -q -m init )
+
+out="$(cd "$proj" && bash "$CHECK")"; rc=$?
+check "clean tree: exit 0" 0 "$rc"
+check_out "clean tree: the gated doc passes" 'pass     docs/guide.md' "$out"
+check_out "clean tree: the excluded doc is skipped, not blocked" 'skipped  research/notes.md' "$out"
+check_out "clean tree: summary line" '1 passed, 1 skipped, 0 blocked' "$out"
+
+printf '# Bad\n\nThis design is load-bearing for the release.\n' > "$proj/docs/bad.md"
+out="$(cd "$proj" && bash "$CHECK")"; rc=$?
+check "a banned phrase blocks: exit 1" 1 "$rc"
+check_out "...and names the file" 'BLOCKED  docs/bad.md' "$out"
+out="$(cd "$proj" && RESPEAK_GATE=off bash "$CHECK")"; rc=$?
+check "session overrides are ignored by the check" 1 "$rc"
+
+# ADV6-1, ADV6-2: nothing outside the committed project file softens the
+# CI verdict: a folder file, an ignored local file, RESPEAK_CONFIG, or a
+# session provider's resolved file.
+printf '.respeak.local.yaml\n' > "$proj/.gitignore"
+printf 'gate: {fail_on: none}\n' > "$proj/docs/.respeak.yaml"
+out="$(cd "$proj" && bash "$CHECK" docs/bad.md 2>&1)"; rc=$?
+check "committed: a folder file at fail_on none still blocks" 1 "$rc"
+check_out "...and the drop is named" 'ignored .*docs/.respeak.yaml gate.fail_on (committed)' "$out"
+printf 'gate: {allow: [".*"]}\n' > "$proj/docs/.respeak.yaml"
+out="$(cd "$proj" && bash "$CHECK" docs/bad.md 2>&1)"; rc=$?
+check "committed: a folder allow of .* still blocks" 1 "$rc"
+rm -f "$proj/docs/.respeak.yaml"
+printf 'gate: {fail_on: none}\n' > "$proj/docs/.respeak.local.yaml"
+out="$(cd "$proj" && bash "$CHECK" docs/bad.md 2>&1)"; rc=$?
+check "committed: an ignored .respeak.local.yaml still blocks" 1 "$rc"
+check_out "...and stays BLOCKED" 'BLOCKED  docs/bad.md' "$out"
+rm -f "$proj/docs/.respeak.local.yaml"
+printf 'gate: {enabled: false}\n' > "$work/env.yaml"
+out="$(cd "$proj" && RESPEAK_CONFIG="$work/env.yaml" bash "$CHECK" docs/bad.md 2>&1)"; rc=$?
+check "committed: RESPEAK_CONFIG at enabled false still blocks" 1 "$rc"
+check_out "...and is not a skip" '0 passed, 0 skipped, 1 blocked' "$out"
+mkdir -p "$work/state/claude-code-session/sessions/s1"
+printf '{"provider": {"name": "claude-code-session", "version": "2.0"}, "respeak": {"gate": {"fail_on": "none"}}}\n' \
+  > "$work/state/claude-code-session/sessions/s1/resolved.json"
+out="$(cd "$proj" && XDG_STATE_HOME="$work/state" CLAUDE_CODE_SESSION_ID=s1 bash "$CHECK" docs/bad.md 2>&1)"; rc=$?
+check "committed: a session provider at fail_on none still blocks" 1 "$rc"
+
+# ADV10-1: a nested project file counts only when git tracks it, and then
+# as the index has it, never the working copy.
+printf '.respeak.local.yaml\ndocs/.claude/\n' > "$proj/.gitignore"
+mkdir -p "$proj/docs/.claude/respeak"
+printf 'version: 3\ngate: {fail_on: none}\n' > "$proj/docs/.claude/respeak/config.yaml"
+out="$(cd "$proj" && bash "$CHECK" docs/bad.md 2>&1)"; rc=$?
+check "committed: an ignored nested project file at fail_on none still blocks" 1 "$rc"
+check_out "...and stays BLOCKED" 'BLOCKED  docs/bad.md' "$out"
+check_out "...and the drop is named" 'docs/.claude/respeak/config.yaml untracked project file (committed)' "$out"
+printf 'version: 3\ngate: {enabled: false}\n' > "$proj/docs/.claude/respeak/config.yaml"
+out="$(cd "$proj" && bash "$CHECK" docs/bad.md 2>&1)"; rc=$?
+check "committed: an ignored nested project file at enabled false still blocks" 1 "$rc"
+printf 'version: 3\ngate: {enabled: true, include: ["**/*.md"], fail_on: error}\n' > "$proj/docs/.claude/respeak/config.yaml"
+( cd "$proj" && git add -f docs/.claude/respeak/config.yaml )
+printf 'version: 3\ngate: {enabled: true, include: ["**/*.md"], fail_on: none}\n' > "$proj/docs/.claude/respeak/config.yaml"
+out="$(cd "$proj" && bash "$CHECK" docs/bad.md 2>&1)"; rc=$?
+check "committed: a tracked nested file is read from the index, not the working copy" 1 "$rc"
+( cd "$proj" && git rm -q -f --cached docs/.claude/respeak/config.yaml ); rm -rf "$proj/docs/.claude"
+printf '.respeak.local.yaml\n' > "$proj/.gitignore"
+
+# ADV11-1: a nested repository's own index is not the target's. Its project
+# file, committed there and excluded from the outer repository, leaves the
+# outer `git status` clean and must not soften the outer verdict.
+gitc() { git -c user.email=t@example.com -c user.name=t "$@"; }
+nest="$work/nest"; mkdir -p "$nest/.claude/respeak" "$nest/docs/.claude/respeak"
+printf 'version: 3\ngate: {enabled: true, include: ["**/*.md"], fail_on: error}\n' > "$nest/.claude/respeak/config.yaml"
+printf '# Bad\n\nThis design is load-bearing for the release.\n' > "$nest/docs/bad.md"
+( cd "$nest" && git init -q && git add -A && gitc commit -q -m init )
+printf 'version: 3\ngate: {enabled: true, include: ["**/*.md"], fail_on: none}\n' > "$nest/docs/.claude/respeak/config.yaml"
+( cd "$nest/docs" && git init -q && git add .claude/respeak/config.yaml && gitc commit -q -m nested )
+printf 'docs/.claude/\n' >> "$nest/.git/info/exclude"
+check "nested repo: the outer status is clean" 0 "$(cd "$nest" && git status --short | wc -l | tr -d ' ')"
+out="$(cd "$nest" && bash "$CHECK" 2>&1)"; rc=$?
+check "nested repo: its fail_on none project file still blocks (exit 1)" 1 "$rc"
+check_out "...1 blocked" '0 passed, 0 skipped, 1 blocked' "$out"
+check_out "...and the drop is named" 'docs/.claude/respeak/config.yaml untracked project file (committed)' "$out"
+printf 'version: 3\ngate: {enabled: false}\n' > "$nest/docs/.claude/respeak/config.yaml"
+( cd "$nest/docs" && gitc commit -q -am off )
+out="$(cd "$nest" && bash "$CHECK" 2>&1)"; rc=$?
+check "nested repo: its enabled false project file still blocks (exit 1)" 1 "$rc"
+check_out "...1 blocked" '0 passed, 0 skipped, 1 blocked' "$out"
+# A project file the outer repository tracks, beside the nested one, governs.
+mkdir -p "$nest/guides/.claude/respeak"
+printf 'version: 3\ngate: {enabled: true, include: ["**/*.md"], fail_on: error}\n' > "$nest/guides/.claude/respeak/config.yaml"
+printf '# Bad\n\nThis design is load-bearing for the release.\n' > "$nest/guides/bad.md"
+printf 'version: 3\ngate: {enabled: true, include: ["**/*.md"], fail_on: none}\n' > "$nest/.claude/respeak/config.yaml"
+( cd "$nest" && git add -A && gitc commit -q -m guides )
+out="$(cd "$nest" && bash "$CHECK" guides/bad.md 2>&1)"; rc=$?
+check "nested repo: a tracked project file beside it still governs (exit 1)" 1 "$rc"
+check_out "...and blocks" 'BLOCKED  guides/bad.md' "$out"
+
+# ADV11-2: a git failure is not "untracked"; the check stops at once, rc 2.
+real_git="$(command -v git)"
+gf="$work/gitfail"; mkdir -p "$gf/.claude/respeak" "$work/shim-fail" "$work/shim-slow"
+printf 'version: 3\ngate: {enabled: true, include: ["**/*.md"], fail_on: error}\n' > "$gf/.claude/respeak/config.yaml"
+printf '# Bad\n\nThis design is load-bearing for the release.\n' > "$gf/bad.md"
+( cd "$gf" && git init -q && git add -A && gitc commit -q -m init )
+printf '#!/bin/bash\ncase " $* " in *" ls-files "*"--error-unmatch"*) echo "fatal: shim" >&2; exit 128 ;; esac\nexec "%s" "$@"\n' "$real_git" > "$work/shim-fail/git"
+printf '#!/bin/bash\ncase " $* " in *" ls-files "*) sleep 3 ;; esac\nexec "%s" "$@"\n' "$real_git" > "$work/shim-slow/git"
+chmod +x "$work/shim-fail/git" "$work/shim-slow/git"
+out="$(cd "$gf" && PATH="$work/shim-fail:$PATH" bash "$CHECK" 2>&1)"; rc=$?
+check "git failure: exit 2, never a pass" 2 "$rc"
+check_out "...and the line says so" 'respeak-config: git failed' "$out"
+if printf '%s' "$out" | grep -q 'skipped'; then fail=$((fail + 1)); echo "FAIL - ...and nothing is skipped: $out"; else pass=$((pass + 1)); echo "ok   - ...and nothing is skipped"; fi
+out="$(cd "$gf" && PATH="$work/shim-slow:$PATH" RESPEAK_GIT_TIMEOUT=1 bash "$CHECK" 2>&1)"; rc=$?
+check "git timeout (RESPEAK_GIT_TIMEOUT=1, git sleeps 3 s): exit 2" 2 "$rc"
+printf 'version: 3\ngate: {enabled: true, include: ["**/*.md"], fail_on: none}\n' > "$gf/.claude/respeak/config.yaml"
+mkdir -p "$gf/sub/.claude/respeak"
+printf 'version: 3\ngate: {enabled: false}\n' > "$gf/sub/.claude/respeak/config.yaml"
+printf '# Bad\n\nThis design is load-bearing for the release.\n' > "$gf/sub/bad.md"
+( cd "$gf" && git checkout -q -- .claude/respeak/config.yaml && git add sub/bad.md && gitc commit -q -m sub )
+out="$(cd "$gf" && bash "$CHECK" sub/bad.md 2>&1)"; rc=$?
+check "healthy git: an untracked project file still drops (exit 1)" 1 "$rc"
+check_out "...and the drop is named" 'sub/.claude/respeak/config.yaml untracked project file (committed)' "$out"
+
+# A file the gate cannot judge is an error, never a pass.
+cp "$proj/docs/guide.md" "$proj/docs/locked.md"; chmod 000 "$proj/docs/locked.md"
+out="$(cd "$proj" && bash "$CHECK" docs/locked.md 2>&1)"; rc=$?
+chmod 644 "$proj/docs/locked.md"; rm -f "$proj/docs/locked.md"
+check "an unreadable doc exits 1" 1 "$rc"
+check_out "...and counts as an error" '0 blocked, 1 errors' "$out"
+check_out "...naming the file" 'ERROR    docs/locked.md' "$out"
+rm -f "$proj/docs/bad.md" "$proj/.gitignore"
+
+# --verify: a prose-only edit passes, a changed number fails
+printf '# Guide\n\nThe release ships on Friday. See [the plan](plan.md), then run `make check`; 3 steps.\n' > "$proj/docs/guide.md"
+out="$(cd "$proj" && bash "$CHECK" --verify HEAD)"; rc=$?
+check "verify: prose-only edit exits 0" 0 "$rc"
+check_out "verify: ...and is reported verified" 'verified docs/guide.md' "$out"
+printf '# Guide\n\nThe release ships on Friday. See [the plan](plan.md) and run `make check`; 4 steps.\n' > "$proj/docs/guide.md"
+out="$(cd "$proj" && bash "$CHECK" --verify HEAD)"; rc=$?
+check "verify: a changed number exits 1" 1 "$rc"
+check_out "verify: ...and names the file" 'CHANGED  docs/guide.md' "$out"
+printf '# New\n\nA new page.\n' > "$proj/docs/new.md"; ( cd "$proj" && git add docs/new.md )
+out="$(cd "$proj" && bash "$CHECK" --verify HEAD docs/new.md)"; rc=$?
+check "verify: a file absent from the ref is gated but not verified" 0 "$rc"
+( cd "$proj" && git checkout -q -- docs/guide.md )
+
+out="$(cd "$proj" && bash "$CHECK" --verify no-such-ref 2>&1)"; rc=$?
+check "usage: an unknown ref exits 2" 2 "$rc"
+out="$(cd "$proj" && bash "$CHECK" --bogus 2>&1)"; rc=$?
+check "usage: an unknown option exits 2" 2 "$rc"
+
+# editorial_pass.verify: the project says what the verifier may relax and
+# which non-Markdown files it covers; the flags say the same for one run.
+vproj="$work/vproj"; mkdir -p "$vproj/.claude/respeak" "$vproj/docs" "$vproj/gen" "$vproj/data"
+cat > "$vproj/.claude/respeak/config.yaml" <<'YAML'
+version: 3
+gate: {enabled: true, include: ["**/*.md"], exclude: [], fail_on: error}
+editorial_pass:
+  restructure: apply
+  verify:
+    prose_keys: [pitch, blurb]
+    allow_strings: true
+    paths: ["gen/*.py", "data/*.yaml"]
+YAML
+card_v1='---\ntitle: Card\npitch: "Ten miles of trail — 2 hours out and back"\n---\n\n# Card\n\nA short walk to the point.\n'
+printf -- "$card_v1" > "$vproj/docs/card.md"
+printf 'LABEL = "Pick the next adventure — camp or trail"\nROWS = {"a": 1}\n' > "$vproj/gen/site.py"
+printf 'plants:\n  - id: fern\n    blurb: "Shade lover — needs 2 waterings a week"\n' > "$vproj/data/plants.yaml"
+( cd "$vproj" && git init -q && git add -A && git -c user.email=t@example.com -c user.name=t commit -q -m init )
+
+printf -- '---\ntitle: Card\npitch: "Ten miles of trail: 2 hours out and back"\n---\n\n# Card\n\nA short walk to the point.\n' > "$vproj/docs/card.md"
+printf 'LABEL = "Pick the next adventure: camp or trail"\nROWS = {"a": 1}\n' > "$vproj/gen/site.py"
+printf 'plants:\n  - id: fern\n    blurb: "Shade lover. Needs 2 waterings a week"\n' > "$vproj/data/plants.yaml"
+out="$(cd "$vproj" && bash "$CHECK" --verify HEAD)"; rc=$?
+check "verify.prose_keys: a reworded front-matter pitch is verified (exit 0)" 0 "$rc"
+check_out "...and the Markdown file is reported verified" 'verified docs/card.md' "$out"
+check_out "verify.paths + allow_strings: the generator's string edit is verified" 'verified gen/site.py' "$out"
+check_out "verify.paths + prose_keys: the data file's blurb is verified" 'verified data/plants.yaml' "$out"
+check_out "...and the summary counts all three" '3 verified, 0 changed' "$out"
+
+printf 'LABEL = "Pick the next adventure: camp or trail"\nROWS = {"a": 1, "b": 2}\n' > "$vproj/gen/site.py"
+out="$(cd "$vproj" && bash "$CHECK" --verify HEAD)"; rc=$?
+check "allow_strings: a new dict entry in the generator still fails (exit 1)" 1 "$rc"
+check_out "...and names the generator" 'CHANGED  gen/site.py' "$out"
+( cd "$vproj" && git checkout -q -- gen/site.py )
+
+printf -- '---\ntitle: Card\npitch: "Ten miles of trail: 3 hours out and back"\n---\n\n# Card\n\nA short walk to the point.\n' > "$vproj/docs/card.md"
+out="$(cd "$vproj" && bash "$CHECK" --verify HEAD)"; rc=$?
+check "prose_keys: a changed number inside the pitch still fails (exit 1)" 1 "$rc"
+check_out "...and names the page" 'CHANGED  docs/card.md' "$out"
+
+printf -- '---\ntitle: Card\npitch: "Ten miles of trail — 2 hours out and back"\n---\n\n# The card\n\nA short walk to the point.\n' > "$vproj/docs/card.md"
+out="$(cd "$vproj" && bash "$CHECK" --verify HEAD docs/card.md)"; rc=$?
+check "restructure: apply: a retitled heading is verified with a warning (exit 0)" 0 "$rc"
+check_out "...and the run says which flag it passed" 'allow-restructure' "$out"
+out="$(cd "$vproj" && bash "$CHECK" --verify HEAD)"; rc=$?
+check_out "a named FILE skips verify.paths; the full run still covers them" 'verified data/plants.yaml' "$out"
+
+# Without any verify configuration the strict verdict stands, and the flags
+# open the same doors for one run.
+( cd "$proj" && git checkout -q -- docs/guide.md )
+printf -- '---\npitch: "Ten miles of trail — 2 hours"\n---\n\n# Card\n\nA short walk.\n' > "$proj/docs/card.md"
+( cd "$proj" && git add docs/card.md && git -c user.email=t@example.com -c user.name=t commit -q -m card )
+printf -- '---\npitch: "Ten miles of trail: 2 hours"\n---\n\n# Card\n\nA short walk.\n' > "$proj/docs/card.md"
+out="$(cd "$proj" && bash "$CHECK" --verify HEAD docs/card.md)"; rc=$?
+check "no verify config: a front-matter edit is CHANGED (exit 1)" 1 "$rc"
+out="$(cd "$proj" && bash "$CHECK" --verify HEAD --prose-keys pitch docs/card.md)"; rc=$?
+check "--prose-keys on the command line verifies it for this run (exit 0)" 0 "$rc"
+out="$(cd "$proj" && bash "$CHECK" --prose-keys 2>&1)"; rc=$?
+check "usage: --prose-keys without a list exits 2" 2 "$rc"
+
+echo; echo "$pass passed, $fail failed"; [ "$fail" -eq 0 ]

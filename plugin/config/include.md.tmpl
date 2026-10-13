@@ -1,0 +1,57 @@
+%% include.md.tmpl: the template /respeak:include renders into a repo's static
+%% include file (design/include-r1.md); plugin/scripts/respeak-include.py reads it.
+%% A line starting with %% is a comment. A line `@@ <section> [name]` opens a
+%% section that runs to the next one. {{name}} is a placeholder the script fills.
+%% After filling, every paragraph and list item of the body is re-wrapped at 76
+%% columns, so the line breaks written here do not reach the output. Each
+%% `@@ mode` section holds `reader:`, `cue:` and `contract:` lines;
+%% tests/test_include.py pins the mode names to the respeak skill's argument-hint.
+%% Any byte changed here makes every rendered file stale (the inputs hash covers
+%% this file); bump `@@ version` when the wording changes.
+@@ version
+1
+@@ stamp
+<!-- respeak include v{{version}}, inputs {{inputs}}; regenerate with /respeak:include, do not edit -->
+@@ body
+# How to write in this repo
+
+Two lanes. Notes, packets, tool output and messages between agents are the
+machine lane. What a person reads is the human lane: replies to the
+user{{files}}.
+
+Machine lane: write in full. {{shorthand}} Never shorten error messages,
+security findings, the user's quotes, or numbers with units.
+
+Human lane: write for {{reader}} in {{mode}} mode: {{contract}} When the
+user names another reader, switch mode:
+
+{{switches}}
+
+In every mode: short sentences, active voice, concrete words, no filler
+openers, no hype, no closing summary of what was just said.
+
+The respeak plugin is optional. With it installed, `/respeak:respeak [mode]`
+renders a narrative and its gate checks these rules. Without it, follow
+them by hand.
+@@ switch
+- {{mode}} ({{reader}}, "{{cue}}"): {{contract}}
+@@ shorthand lexicon
+Use shorthand only for the terms in `.claude/respeak/lexicon-active.md`.
+@@ shorthand none
+Use no shorthand: this repo ships no lexicon.
+@@ mode technical
+reader: a peer engineer
+cue: technical
+contract: the conclusion first, then the evidence as file:line or the command that shows it, then open questions.
+@@ mode eli5
+reader: a newcomer
+cue: plain English
+contract: one idea per sentence, at most one analogy, and the next sentence says the real thing.
+@@ mode bluf
+reader: a manager
+cue: bottom line
+contract: the result, decision or ask first, with owner and deadline; a manager can forward it unedited.
+@@ readers
+exec: an executive
+peer-engineer: a peer engineer
+author: the repo's author

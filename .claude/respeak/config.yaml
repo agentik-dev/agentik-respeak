@@ -1,0 +1,10 @@
+version: 3
+narrative: { profile: peer-engineer, auto_narrative: false }   # technical, tech_level 3: public GitHub and plugin users
+hooks: { session_start: true }   # this repo ships a lexicon: name it at session start
+gate:
+  enabled: true    # kept until respeak-check.sh --human ships: make doclint runs respeak-check.sh,
+                   # which skips every file while this is false; that packet sets it false
+  include: [README.md, CHANGELOG.md, DECISIONS.md, DESIGN.md, NICE_TO_HAVE.md, OPEN-QUESTIONS.md,
+            HANDOFF.md, docs/, plugin/docs/, "design/*.md", design/readme/]
+  exclude: [examples/]   # fixtures; examples/layered/project/ is governed by its own committed config
+  fail_on: error
