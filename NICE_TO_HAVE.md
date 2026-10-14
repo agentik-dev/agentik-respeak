@@ -18,3 +18,7 @@ Nothing here blocks a review or a merge. An item leaves when it lands, or when a
 - S4, n1 round two, unchecked: whether init's `Bash(git add .claude/respeak/*)` allowance also matches `git add .claude/respeak/x .`, which stages the whole tree; Claude Code's permission matcher was not run.
 - agentik-r1-respeak (2026-10-13): c10's migration is `make venv`, but this repo has no `venv` target. Until one lands or the owner builds `agentik-respeak` (3.12, PyYAML) at the switch, the Makefile runs on the old venv named on `.python-version`'s second line.
 - agentik-r1-respeak (2026-10-13): README.md and its source took the same hand edit and were stamped by `readme-fresh.sh --stamp` after the verifier passed, since `make readme` spawns `claude -p`. The next `make readme` gives the new install paragraph its editorial pass.
+- (agentik-r1 review, 2026-10-13, S4) With both plugin IDs listed, `plugin/scripts/respeak-doctor.sh` prints the new one and no warning, hiding the doubled hooks the README warns about; add `; old id also listed`.
+- (agentik-r1 review, S4) `make install` with only the old ID listed installs `respeak@agentik` and prints no hint to disable the old ID; echo the `claude plugin disable` line.
+- (agentik-r1 review, S4) `make install` on a malformed or empty plugin list exits 2 with a raw Python traceback; print one `install:` line naming the cause.
+- (agentik-r1 review, S4) The Makefile's `$(wildcard)` venv pick takes a dangling new-venv `python3` link over a working old venv; test with `-x`.
