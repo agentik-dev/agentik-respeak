@@ -82,7 +82,8 @@ Enforceable rules:
 ## 4. Minto Pyramid Principle (Barbara Minto)
 
 Sources: Wikipedia "Barbara Minto"; untools.co/minto-pyramid. Minto (first
-female MBA McKinsey hired, 1963; *The Pyramid Principle*, 1985/1996) invented
+female MBA McKinsey hired, 1963; *The Pyramid Principle*, written 1987 per barbaraminto.com, read 2026-10-14;
+*The Minto Pyramid Principle*, 1996) invented
 MECE and the pyramid: "ideas ... organized top-down, starting with a main idea
 that is a high-level summary of supporting key ideas, each of which is derived
 from further supporting sub-points." "Humans naturally impose this kind of
@@ -97,7 +98,7 @@ Enforceable rules:
 5. **SCQA opening** (Minto's narrative intro, standard framework from the book): Situation (uncontested context) → Complication (what changed/broke) → Question (raised in the reader's mind) → Answer (your main point). In BLUF-style docs the Answer moves to sentence one and S-C compress to a clause.
 6. Judge check: read only the top-level statements — they must form a complete, coherent argument on their own.
 
-## 5. Simply Said (Jay Sullivan / Exec-Comm, Wiley 2017)
+## 5. Simply Said (Jay Sullivan / Exec-Comm, Wiley, October 2016)
 
 Source: exec-comm.com product page + book (standard framework). Exec-Comm's
 core philosophy, verbatim from their site: "we are all more effective
@@ -205,7 +206,7 @@ Enforceable rules:
 11. **No brackets for singular/plural "document(s)"** — always use the plural.
 12. **Legal content still in plain English;** if legal jargon must appear, add a plain-English summary; explain any needed legal term.
 
-## 9. Everyone Communicates, Few Connect (John C. Maxwell, 2010)
+## 9. Everyone Communicates, Few Connect (John C. Maxwell, Thomas Nelson, 2010)
 
 Sources: sobrief.com summary (fetched); five-principles/five-practices
 structure from the book (standard framework). Core claim: "More than 90

@@ -82,14 +82,14 @@ All entries verified by fetching a live page (see Sources). Audiobook availabili
 2. **Book: The Sense of Style — Steven Pinker (2014).** Verified via Wikipedia ("applies science to the process of writing," successor to Strunk & White). Why: Pinker's "curse of knowledge" chapter is the theory behind why agent shorthand becomes illegible to humans — directly motivates the translator subagent.
 3. **Book: Several Short Sentences About Writing — Verlyn Klinkenborg (2012).** Verified via Wikipedia (author) + Open Library (first pub 2012). Why: sentence-level economy as a discipline; the anti-"however-therefore-moreover" manifesto; ideal calibration text for the BLUF register.
 4. **Book: Smart Brevity — Jim VandeHei, Mike Allen, Roy Schwartz (2022).** Verified via Open Library + Axios HQ product site. Why: the operational playbook for BLUF mode (one strong first sentence, "Why it matters," bullets, bolding); respeak's manager mode can adopt its structure wholesale.
-5. **Book: The Pyramid Principle — Barbara Minto (first pub 1978).** Verified via Wikipedia (Minto, "executive communication") + Open Library. Why: answer-first, grouped-and-ordered logic is the structural spec for the manager/BLUF register; the SCQA framing suits incident narratives.
+5. **Book: The Pyramid Principle — Barbara Minto (written 1987, per barbaraminto.com, read 2026-10-14; revised as The Minto Pyramid Principle, 1996).** Verified via Wikipedia (Minto, "executive communication") + Open Library. Why: answer-first, grouped-and-ordered logic is the structural spec for the manager/BLUF register; the SCQA framing suits incident narratives.
 
 ### 2.2 Books — manager & interpersonal communication
 
-6. **Book: Simply Said — Jay Sullivan (2016, Wiley).** Verified via Open Library. Why: "focus on the audience, not yourself" — the single organizing principle respeak's translator needs when choosing register and detail level.
+6. **Book: Simply Said — Jay Sullivan (Wiley, October 2016, per the Wiley product page, read 2026-10-14).** Verified via Open Library. Why: "focus on the audience, not yourself" — the single organizing principle respeak's translator needs when choosing register and detail level.
 7. **Book: Radical Candor — Kim Scott (2017).** Verified via Wikipedia ("feedback that incorporates both praise and criticism"). Why: model for how the translator should report agent failures to humans — direct, caring, non-euphemistic; anti-corporate-hedging.
 8. **Book: Crucial Conversations — Patterson, Grenny, McMillan, Switzler (2002; 3rd ed. 2022; 2M+ sold).** Verified via Wikipedia. Why: high-stakes disclosure patterns (facts before stories, safety before content) for when the swarm must deliver bad news.
-9. **Book: Everyone Communicates, Few Connect — John C. Maxwell (2009).** Verified via Open Library. Why: connection-over-transmission framing; useful counterweight so BLUF mode doesn't become affectless.
+9. **Book: Everyone Communicates, Few Connect — John C. Maxwell (Thomas Nelson, 2010, per the Open Library record for ISBN 9780785214250, read 2026-10-14).** Verified via Open Library. Why: connection-over-transmission framing; useful counterweight so BLUF mode doesn't become affectless.
 
 ### 2.3 Books — linguistics of jargon, convention & language change
 
