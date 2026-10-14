@@ -63,11 +63,14 @@ not a benchmark.
 | Banned phrases (error severity) | 3 | 0 |
 | Banned phrases (warn severity) | 9 | 1 (a deliberate, documented keep) |
 | Em-dashes per 1000 words | 19.9 | 3.1 |
-| Average sentence length | 32.1 words | 24.5 words |
+| Average sentence length (before the 2026-09-21 splitter) | 32.1 words | 24.5 words |
 | Headings, links, code, numbers changed | n/a | zero (`respeak-verify-edit.py` passes) |
 
 The pass kept "a genuine platform gap" because the corpus bans `genuinely`,
-not `genuine`.
+not `genuine`. The sentence row predates the 2026-09-21 splitter, which
+reads each list item and table row as its own unit, so it does not compare
+with a current run. The document is no longer in the repository, so the row
+stays as measured.
 
 ## Install
 

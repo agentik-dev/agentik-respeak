@@ -229,8 +229,7 @@ names the failure behind it.
 - `README.md` is rendered by `make readme` from `design/readme/source.md`,
   proved prose-only by `respeak-verify-edit.py`, and stamped in
   `design/readme/rendered.sha256`; `make check` refuses a stale README.
-  Before this, the README was edited by hand and had grown to 40,089 bytes;
-  the render is 21,453.
+  Before this, the README was edited by hand and had grown to 40,089 bytes.
 - `tests/test_overrides.sh` and `tests/test_gate_hook.sh` run
   `"${PYTHON:-python3}"` for their own JSON. Before this, they passed only
   when PATH put a PyYAML-capable `python3` first.
