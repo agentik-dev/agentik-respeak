@@ -76,16 +76,25 @@ The sources behind each design concept, fetched and read during the research run
 
 **Communication standards (the mode contracts)**
 
-- US federal plain-language guidelines: verbs over nominalizations, reader-
-  first structure. <https://www.plainlanguage.gov/guidelines/>
+- US federal plain-language guidelines: verbs over nominalizations, the
+  purpose and the bottom line first, paragraphs of at most 150 words. Cited
+  from the plainlanguage.gov repository copy, read 2026-10-14; the
+  repository was archived on 2025-12-29.
+  <https://github.com/GSA/plainlanguage.gov/tree/main/_pages/guidelines>
 - GOV.UK style guide: "cannot, not can't"; numbered steps for processes.
   <https://www.gov.uk/guidance/style-guide/a-to-z-of-gov-uk-style>
 - ASD-STE100 Simplified Technical English: the sentence caps.
   <https://www.asd-ste100.org/>
-- BLUF (bottom line up front): answer first, and the delete test.
+- BLUF (bottom line up front): answer first, and the delete test. Army
+  Regulation 25-50 (10 October 2020) puts the main point first (paragraph
+  1-38) and asks for sentences of about 15 words on average (1-39); 1-15
+  bans brevity codes in letters to people outside the Department of
+  Defense. BLUF is a writing standard, not a measured effect: no experiment
+  of a reader acting on a conclusion-first report was found.
   <https://en.wikipedia.org/wiki/BLUF_(communication)>
 - Barbara Minto, the Pyramid Principle: grouped, MECE, answer-first
-  argument. <https://en.wikipedia.org/wiki/Barbara_Minto>
+  argument. Like BLUF, it is a practitioner's standard, not a measured
+  effect. <https://en.wikipedia.org/wiki/Barbara_Minto>
 - Radical Candor (Kim Scott): the checkable feedback switches.
   <https://www.radicalcandor.com/blog/what-is-radical-candor/>
 - Crucial Conversations: facts before stories; contrasting statements.

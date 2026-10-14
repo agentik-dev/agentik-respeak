@@ -139,7 +139,7 @@ modes:
   bluf:
     tech_level: 2
     reading_level_grade: 9 # a register cue, not computed (as eli5)
-    max_sentence_words: 20 # AR 25-50 / plain-language cap
+    max_sentence_words: 20 # a cap; AR 25-50 (10 Oct 2020) 1-39 asks ~15 on average
     length_budget_words: 200
     max_paragraph_sentences: 6 # STE
     structure: bluf # sentence 1 = the decision/result/ask; no preamble
