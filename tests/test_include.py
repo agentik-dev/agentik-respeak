@@ -22,6 +22,7 @@ OLD_WRAPPER = os.path.join(PLUGIN, "scripts", "respeak-py.sh")
 TEMPLATE = os.path.join(PLUGIN, "config", "include.md.tmpl")
 SKILL = os.path.join(PLUGIN, "skills", "respeak", "SKILL.md")
 INIT_SKILL = os.path.join(PLUGIN, "skills", "init", "SKILL.md")
+AGENT = os.path.join(PLUGIN, "agents", "respeak.md")
 FIXTURE = os.path.join(REPO, "examples", "layered", "project")
 HYGIENE = os.path.join(REPO, "scripts", "hygiene")
 OUT_REL = os.path.join(".claude", "respeak", "include.md")
@@ -390,6 +391,35 @@ class Hygiene(Base):
         p = subprocess.run([sys.executable, HYGIENE, "--repo", scan, "--allow", allow],
                            env=self.r.env, text=True, capture_output=True, timeout=60)
         self.assertExit(p, 0)
+
+
+class DoneClaimRule(Base):
+    """r2: in the human lane, a claim that work is done, fixed, passing or green
+    is fact only beside the tool result that shows it; else it reads as claimed
+    and not verified, with what would verify it. The study behind the rule is
+    cited in research/synthesis/design-principles.md, never in the prompt."""
+
+    def test_the_translator_carries_the_rule(self):
+        with open(AGENT, encoding="utf-8") as f:
+            text = flat(f.read().encode("utf-8"))
+        for phrase in ("done, fixed, passing or green", "tool result",
+                       "a test count, an exit code, a gate line, a commit",
+                       "claimed and not verified", "what would verify it"):
+            self.assertTrue(phrase in text, "plugin/agents/respeak.md lacks %r" % phrase)
+        # an editorial pass names the claim; it never rewords the record
+        self.assertTrue("editorial pass, leave the claim as written" in text,
+                        "plugin/agents/respeak.md lets an editorial pass reword the claim")
+        cite = re.search(r"(?i)advani|arxiv|75\.8", text)
+        self.assertIsNone(cite and cite.group(0), "the study is cited in the prompt")
+
+    def test_the_rendered_include_carries_the_rule(self):
+        self.assertExit(self.r.run("write"), 0)
+        data = self.r.read()
+        self.assertLessEqual(len(data), CAP)
+        text = flat(data)
+        rule = ("Done, fixed, passing or green needs a tool result that shows it; "
+                "else say claimed, not verified, and what would verify it.")
+        self.assertTrue(rule in text, "the include lacks the rule:\n" + text)
 
 
 class Propose(unittest.TestCase):

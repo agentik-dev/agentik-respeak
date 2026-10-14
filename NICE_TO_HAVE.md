@@ -1,12 +1,15 @@
 ---
 status: current
-updated: 2026-10-13
+updated: 2026-10-14
 owner: the owner
 audience: the owner, agent
 ---
 # claude-code-respeak: what is left open, none of it blocking
 
 Nothing here blocks a review or a merge. An item leaves when it lands, or when a decision retires it.
+
+- The shorthand governance is planned, not built (2026-10-14, r2; S4). Planned: the cap of 150 lexicon entries, a minimum edit distance of 2, expiry after 180 days unused, the 90-day review, the 30-day fresh-decoder audit, and the auto-ratification gate (5 clean uses, 0 fidelity failures, readback evidence). Planned with them: the register marker, the reserved metawords, and the readback and decompress triggers. `plugin/config/respeak.config.yaml` declared each one and nothing read it, so r2 removed them under the README's rule. Each key returns with the code that reads it; `research/synthesis/config-critique.md` holds the sources. Two traces remain: `never_compress` keeps a `reserved-metawords` class that names no words, and `docs/architecture.md` still describes the toolkit as carried.
+- The include template has little room left under its cap (2026-10-14, r2; S4). With v2's done-claim rule, this repo's own config (11 `gate.include` entries and a lexicon) renders at 1,498 bytes against the 1,500-byte cap; the fixture renders at 1,309. The next rule added to `plugin/config/include.md.tmpl` takes its bytes from another sentence, or waits on a ruling about the cap.
 
 - The session layer has no freshness check (2026-10-14, the observer; S4): `session_layer` (`plugin/scripts/respeak-config.py:637-676`) accepts the resolved file on its provider major alone and applies it above `.claude/respeak/config.yaml`, its local file and the folder files, and respeak never reads its section of `.claude/agentik/config.yaml` itself, so a frozen `respeak:` section outlives a later edit for the whole sitting. Inert today: every real resolved file holds only the profile's `narrative: tech`, dropped with a warning. Fix as agentik-relay's session-layer-r1 §2: read the repo's section directly (GUIDE §3 lists the layer) and apply the session layer only while `provider.inputs` list `.claude/agentik/config.yaml` and `config.local.yaml` at their current sha256.
 - include-r1's refuter round (2026-10-11; BLOCK on B1, fixed before the merge), the notes left: N5, the import from the user-level CLAUDE.md that the owner's answer names stays a by-hand step. N8, the owner's ruling sits in no DECISIONS.md, since this repo keeps no ledger. Unchecked: whether Claude Code hides the include's HTML-comment stamp line from the model.

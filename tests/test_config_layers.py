@@ -1058,3 +1058,48 @@ class V043CLI(unittest.TestCase):
         r = self.run_cli("gate", "--for", doc, "--set", "gate.enabled=no", "--walk-from", self.fx.root)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertFalse(json.loads(r.stdout)["enabled"])
+
+
+# ---------------------------------------------------------------------------
+# r2: a shorthand key with no observable behaviour is not shipped (README:
+# a config field with no observable behaviour is deleted); NICE_TO_HAVE.md
+# holds the plan for the removed ones.
+# ---------------------------------------------------------------------------
+
+class ShorthandGovernanceKeys(unittest.TestCase):
+    SHIPPED = os.path.join(PLUGIN, "config", "respeak.config.yaml")
+    # tagged [not built] in 66531f7: declared, and nothing read them
+    NOT_BUILT = ("auto", "max_entries", "min_token_edit_distance", "retire_after_days_unused",
+                 "review_cadence_days", "legibility_audit", "register_marker",
+                 "reserved_metawords", "readback_required_for", "decompress_on")
+    # the keys with behaviour: a fixed path the scripts use, or the translator's prompt
+    KEPT = {"lexicon", "proposal_dir", "ratification", "legibility_floor", "never_compress"}
+
+    def setUp(self):
+        self.fx = Fixture()
+        self.addCleanup(self.fx.cleanup)
+
+    def test_shipped_config_holds_no_not_built_key(self):
+        with open(self.SHIPPED) as f:
+            text = f.read()
+        shorthand = rc.yaml.safe_load(text)["shorthand"]
+        self.assertEqual([k for k in self.NOT_BUILT if k in shorthand], [])
+        self.assertNotIn("[not built]", text)
+        self.assertEqual(set(shorthand), self.KEPT)
+        # the resolver's lowest layer is that file, so plugin defaults alone know only these
+        res = self.fx.resolve()
+        self.assertEqual(set(rc.get_dotted(res.config, "shorthand")), self.KEPT)
+
+    def test_a_file_that_still_sets_one_gets_the_unknown_key_treatment(self):
+        # from a user layer: shorthand.* is project-only, dropped with the warning
+        self.fx.user("shorthand: {max_entries: 150}\n")
+        res = self.fx.resolve()
+        self.assertIn("%s: shorthand is project-only; ignored"
+                      % os.path.join(self.fx.cfgdir, "respeak", "config.yaml"), res.warnings)
+        self.assertIsNone(rc.get_dotted(res.config, "shorthand.max_entries"))
+        # from a project layer: merged as any unknown nested key is, and read by nothing;
+        # validate refuses no old file for it
+        proj = os.path.join(self.fx.project, ".claude", "respeak", "config.yaml")
+        write(proj, "shorthand: {max_entries: 150, auto: {uses: 5}}\n")
+        errors, _ = rc.validate_file(proj, "project", self.fx.env(), PLUGIN)
+        self.assertEqual(errors, [])

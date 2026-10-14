@@ -306,7 +306,7 @@ proposal is only a proposal until a human ratifies it.
 
 ## Status
 
-Status: version `0.8.0`, rendered `2026-10-13`, `275` unittest cases and `10` bash suites.
+Status: version `0.8.0`, rendered `2026-10-13`, `279` unittest cases and `10` bash suites.
 
 | Surface | State |
 |---|---|
@@ -321,7 +321,8 @@ Status: version `0.8.0`, rendered `2026-10-13`, `275` unittest cases and `10` ba
 | Headless renderer: `respeak-render.sh` wraps `claude -p` | Working |
 | Configuration resolver: `respeak-config.sh resolve\|explain\|gate\|validate` | Working |
 
-Declared, not yet checked or built:
+Not yet built. The first six items are shorthand governance: the config no
+longer declares them, and [`NICE_TO_HAVE.md`](/NICE_TO_HAVE.md) holds their plan.
 
 - Lexicon entry cap (150 terms)
 - Edit-distance check between near-neighbor shorthand (minimum distance 2)
