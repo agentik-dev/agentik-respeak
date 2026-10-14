@@ -1,4 +1,4 @@
-# claude-code-respeak
+# agentik-respeak
 
 This repository ships the respeak plugin and uses it on itself. A session
 working here follows these rules.
@@ -42,7 +42,8 @@ silences it for one session when you must; say so in the commit message.
 **Before committing.** Run `bash plugin/scripts/respeak-check.sh` (every doc passes
 its own gate) and `make check`. Use `python3` for anything Python: in this
 repo it is the pyenv virtualenv `.python-version` declares,
-`claude-code-respeak` (3.12, with PyYAML).
+`agentik-respeak` (3.12, with PyYAML); until the switch builds it, the
+Makefile takes the venv on the file's second line, its name before agentik-r1.
 
 **Lexicon.** The ratified shorthand digest below is generated from
 `plugin/corpus/lexicon.yaml` by `plugin/scripts/render-lexicon-digest.sh`; regenerate it

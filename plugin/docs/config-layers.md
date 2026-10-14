@@ -52,7 +52,7 @@ Lowest precedence first. "May set" is explained under
 | 5 | project | `<project>/.claude/respeak/config.yaml` | the project | yes | everything |
 | 6 | project local | `<project>/.claude/respeak/config.local.yaml` | you | gitignored | everything |
 | 7 | folders | `<dir>/.respeak.yaml` and `.respeak.local.yaml` from the project root down to the target's directory, nearest last | folder owners | yes / gitignored | tone keys |
-| 8 | session | the `respeak` section of `${XDG_STATE_HOME:-~/.local/state}/claude-code-session/sessions/<session_id>/resolved.json`, when `provider.version` has major 2; absent means an empty layer | claude-code-session | no | tone keys |
+| 8 | session | the `respeak` section of `${XDG_STATE_HOME:-~/.local/state}/agentik-session/sessions/<session_id>/resolved.json` (the provider's folder before agentik-r1 when only it holds the file), when `provider.version` has major 2; absent means an empty layer | agentik-session | no | tone keys |
 | 9 | env | files listed in `RESPEAK_CONFIG` (colon-separated) | CI, one-off runs | no | everything |
 | 10 | invocation | `--mode`, `--profile`, `--context`, `--set key=value`; `/respeak:respeak bluf` | the caller | no | everything |
 

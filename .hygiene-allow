@@ -1,9 +1,10 @@
 # .hygiene-allow: <path-glob>: <group>[,<group>]; `*` stays inside one path segment.
 # Nothing private is allowed here: the terms private to one owner live outside the repo, in
-# scripts/hygiene's private list. No entry covers history/; the packets' entries allow sibling only.
+# scripts/hygiene's private list. No entry covers history/: no chain is declared live here.
+# renamed rows are agentik-r1's declared exceptions (its section 6.1): a fallback constant until
+# r2, a copy pinned from elsewhere, or a reject list; one row per file, the old names nowhere else.
 # sibling hits are the plugin's own name (`respeak`) or a public sibling plugin's name; every
 # entry says why on its own line.
-.claude-plugin/*: sibling                         # the marketplace names the plugin
 plugin/.claude-plugin/*: sibling                  # the manifest names the plugin
 plugin/.claude-plugin/plugin.json: person         # the author field keeps the owner's name
 LICENSE: person                                   # the copyright line names the owner
@@ -43,3 +44,11 @@ design/review-r6.md: sibling                      # a review of the plugin
 design/review-adv10.md: sibling                   # a review of the plugin
 design/review-adv11.md: sibling                   # a review of the plugin
 design/include-r1.md: sibling                     # the include design names the plugin
+.python-version: renamed                          # c10 fallback: the venv's name before agentik-r1, line 2
+Makefile: renamed                                 # c10 fallback: VENV_OLD, the venv before agentik-r1
+plugin/scripts/respeak-config.py: renamed         # c1 fallback: SESSION_PROVIDER_OLD, the old state folder
+plugin/scripts/respeak-doctor.sh: renamed         # c7 fallback: the old marketplace and plugin id, warned
+tests/test_doctor.sh: renamed                     # c7 fallback: the fake claude of a machine before the switch
+scripts/doclint: renamed                          # a copy pinned by DOCLINT_SHA; one copy in r2
+scripts/readme-render.sh: renamed                 # quotes a relay record's text verbatim
+tests/test_readme.py: renamed                     # the README's reject list of other siblings' ids

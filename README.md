@@ -77,28 +77,26 @@ also needs `gh`. The scripts pick the first interpreter that imports PyYAML
 (override with `RESPEAK_PYTHON`). The translator runs as a Sonnet subagent
 in its own context window, so the swarm's context never pays for it.
 
-Install from GitHub (these write to your `~/.claude` config):
+Install from GitHub (these write to your `~/.claude` config). One
+marketplace, `agentik`, lists respeak and its sibling plugins:
 
 ```sh
-claude plugin marketplace add agentik-dev/agentik-respeak
-claude plugin install respeak@claude-code-respeak
+claude plugin marketplace add agentik-dev/agentik-commons
+claude plugin install respeak@agentik
 # optionally: --config default_mode=bluf --config tech_level=2
 ```
 
-The marketplace was named `respeak` before 0.6.1. If you added it under
-that name, remove it, then add and install again:
+Before agentik-r1, this repository was its own marketplace. If you added
+it, remove it under the name `claude plugin marketplace list` shows for
+`agentik-dev/agentik-respeak`, then add and install as above. Two install
+paths would run every hook twice.
 
-```sh
-claude plugin marketplace remove respeak
-claude plugin marketplace add agentik-dev/agentik-respeak
-claude plugin install respeak@claude-code-respeak
-```
-
-From a checkout, `make install` adds the marketplace when it is absent and
-updates it when it already points at the checkout. It never removes a
-registration from another source; it prints the two commands instead and
-exits 2. `make doctor` prints one line per check: python, claude,
-marketplace, plugin, provider, config.
+From a checkout, `make install` installs `respeak@agentik`, or updates it
+when it is already installed. It never adds or removes a marketplace:
+without `agentik`, it prints the line that adds it and exits 2.
+`make doctor` prints one line per check: python, claude, marketplace,
+plugin, provider, config. It names an ID from before the switch with a
+warning.
 
 ```sh
 make install
@@ -217,7 +215,7 @@ Configuration resolves from layers, and the layer nearest the target wins:
 | project local | `.claude/respeak/config.local.yaml` (gitignored) | your override for one repo |
 | scopes | `scopes:` entries with `paths:` globs, applied right after their file | path-keyed overrides |
 | folder | `.respeak.yaml` in any folder from the project root down | a folder's own audience |
-| provider | the `respeak` section of `claude-code-session`'s resolved file (major 2) | the session's tone; optional |
+| provider | the `respeak` section of `agentik-session`'s resolved file (major 2) | the session's tone; optional |
 | invocation | `/respeak:respeak bluf`, `--mode`, `--set` | this one render |
 | session | `/respeak:off`, `/respeak:on [gate]`, `RESPEAK_HOOKS`, `RESPEAK_GATE` | hooks on or off for this session |
 
@@ -287,7 +285,7 @@ owner stay outside the repo, in the list named by `$AGENTIK_HYGIENE_PRIVATE`
 refuses to scan without it. Each README is rendered from its source, and
 the sidecar `design/readme/rendered.sha256` holds the two hashes
 `make check` reads. The one sibling respeak reads is
-`claude-code-session`, major 2, as the optional provider of the session's
+`agentik-session`, major 2, as the optional provider of the session's
 tone, and nothing breaks without it.
 
 ## What can go wrong
@@ -302,7 +300,7 @@ proposal is only a proposal until a human ratifies it.
 
 ## Status
 
-Status: version `0.8.0`, rendered `2026-10-13`, `272` unittest cases and `10` bash suites.
+Status: version `0.8.0`, rendered `2026-10-13`, `275` unittest cases and `10` bash suites.
 
 | Surface | State |
 |---|---|
@@ -332,7 +330,6 @@ See CHANGELOG.md for what each version changed and why.
 ## Layout
 
 ```
-.claude-plugin/            the marketplace: its one plugin is ./plugin
 .claude/respeak/           this repo's respeak layer: the human-lane scope, the lexicon digest
 .hygiene-allow             the names scripts/hygiene permits, per path
 .python-version            the pyenv virtualenv the checks run under (3.12, PyYAML)
