@@ -31,7 +31,7 @@ swarm to write prose, paying the tax everywhere) or loses the loop.
                                   │ observed terms
                                   ▼
                       ┌──────────────────────────┐     proposals
-                      │  respeak translator      │────▶ plugin/corpus/proposals/
+                      │  respeak translator      │────▶ .claude/respeak/proposals/
                       │  (subagent, read-only    │      (human ratifies)
                       │   toward swarm state)    │
                       └───────────┬──────────────┘

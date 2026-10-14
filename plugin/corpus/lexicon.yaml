@@ -6,7 +6,7 @@
 #
 # Following the long-running-harness lesson (structured registries resist
 # drift better than prose), this file is append-mostly:
-#   - agents PROPOSE entries by writing files into corpus/proposals/
+#   - agents PROPOSE entries by writing files into .claude/respeak/proposals/
 #   - ratification (human or auto, per config) moves them here
 #   - entries are never deleted, only status: retired
 #

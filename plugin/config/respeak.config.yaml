@@ -287,7 +287,7 @@ shorthand: # project-only: governance never varies by folder or by user
   #   [not built]        declared; nothing reads it (README: "Declared, not yet checked or built")
   #   [fixed path]       the scripts and the agent use a fixed path; this key is not read
   lexicon: corpus/lexicon.yaml # [fixed path] .claude/respeak/lexicon.yaml, else this seed
-  proposal_dir: corpus/proposals/
+  proposal_dir: .claude/respeak/proposals/ # [fixed path] in the project, never the plugin
   ratification: human # human | auto. [instruction-only]: the agent never ratifies
   auto: # [not built] the auto-ratification gate; replaces auto_uses
     uses: 5
