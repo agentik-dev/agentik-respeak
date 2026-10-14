@@ -5,14 +5,18 @@ The sources behind each design concept, fetched and read during the research run
 **Why swarms drift into shorthand (linguistics of convention)**
 
 - Clark & Wilkes-Gibbs, *Referring as a collaborative process*: conceptual
-  pacts; 40 words become "the skater" in six rounds.
-  <https://en.wikipedia.org/wiki/Conceptual_pact>
+  pacts; 40 words become "the skater" in six rounds. Wikipedia has no page
+  for the pact; it covers the idea under lexical entrainment.
+  <https://en.wikipedia.org/wiki/Lexical_entrainment>
 - Clark & Brennan, grounding and common ground: why the reader's decoding
   effort counts in the cost. <https://en.wikipedia.org/wiki/Grounding_in_communication>
-- Pickering & Garrod, interactive alignment: entrainment is automatic, so
-  drift needs no decision. <https://en.wikipedia.org/wiki/Interactive_alignment>
-- Garrod et al., experimental semiotics: evolved signs go opaque to
-  outsiders. <https://en.wikipedia.org/wiki/Experimental_semiotics>
+- Pickering & Garrod, *Toward a mechanistic psychology of dialogue*
+  (Behavioral and Brain Sciences 27, 2004), interactive alignment:
+  entrainment is automatic, so drift needs no decision.
+  <https://doi.org/10.1017/S0140525X04000056>
+- Galantucci & Garrod, *Experimental semiotics: a review* (Frontiers in
+  Human Neuroscience 5, 2011): evolved signs go opaque to outsiders.
+  <https://doi.org/10.3389/fnhum.2011.00011>
 - Zipf's law of abbreviation: frequent forms shorten.
   <https://en.wikipedia.org/wiki/Brevity_law>
 - Piantadosi, Tily & Gibson (PNAS 2011): word length tracks information
