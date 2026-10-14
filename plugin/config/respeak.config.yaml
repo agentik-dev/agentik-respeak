@@ -116,7 +116,8 @@ profiles:
 modes:
   eli5:
     tech_level: 1
-    reading_level_grade: 6
+    reading_level_grade: 6 # a register cue for the translator; no script
+                           # computes it (see style.readability_metrics)
     max_sentence_words: 15
     length_budget_words: 150
     max_paragraphs: 1
@@ -137,7 +138,7 @@ modes:
 
   bluf:
     tech_level: 2
-    reading_level_grade: 9
+    reading_level_grade: 9 # a register cue, not computed (as eli5)
     max_sentence_words: 20 # AR 25-50 / plain-language cap
     length_budget_words: 200
     max_paragraph_sentences: 6 # STE
@@ -162,7 +163,8 @@ modes:
   technical:
     tech_level: 4
     reading_level_grade: 12 # UNVERIFIED number — prior art says "a ceiling
-                            # exists" (Hemingway Technical preset), names none
+                            # exists" (Hemingway Technical preset), names none.
+                            # Not computed: see style.readability_metrics.
     max_sentence_words: 25  # was 28 — above every standard; STE descriptive cap
     max_step_words: 20      # STE procedural cap
     length_budget_words: 500
@@ -195,7 +197,12 @@ style:
   positive_form: true          # no double negatives
   same_term_same_concept: true # plainlanguage #11 + STE; lint against lexicon
   quoting_exempt: true         # quotes/code blocks exempt from bans
-  readability_metrics: [flesch_kincaid, gunning_fog] # averaged (Vale semantics)
+  readability_metrics: [flesch_kincaid, gunning_fog] # DECLARED, NOT COMPUTED:
+                        # no script computes a grade; respeak-measure.py counts
+                        # sentence length and em-dash density only. Formulas
+                        # track rated difficulty weakly on specialist text
+                        # (Zheng and Yu 2017, JMIR 19(3):e59: r 0.10 to 0.41),
+                        # so the sentence and paragraph budgets are the checks.
   min_alert_level: { ci: error, interactive: warn }
   budgets: # budgets, not bans (Hemingway model)
     passive_per_10_sentences: 2 # replaces active_voice_min; procedural override = 0
