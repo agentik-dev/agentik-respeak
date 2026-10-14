@@ -215,7 +215,7 @@ Configuration resolves from layers, and the layer nearest the target wins:
 | Layer | File | Typical use |
 | --- | --- | --- |
 | plugin defaults | `config/respeak.config.yaml` in the plugin | the shipped contract |
-| plugin userConfig | `claude plugin install respeak --config default_mode=bluf` | a quick personal default |
+| plugin userConfig | `claude plugin install respeak@agentik --config default_mode=bluf` | a quick personal default |
 | user | `~/.claude/respeak/config.yaml` | your default across every repo |
 | project | `.claude/respeak/config.yaml` | the project's baseline; the only place the gate turns on |
 | project local | `.claude/respeak/config.local.yaml` (gitignored) | your override for one repo |
