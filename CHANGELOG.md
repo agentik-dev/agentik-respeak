@@ -2,7 +2,7 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
-## Unreleased
+## 0.8.1 (2026-10-14)
 
 - The shipped config drops the ten `shorthand.*` keys nothing read:
   `auto`, `max_entries`, `min_token_edit_distance`,
