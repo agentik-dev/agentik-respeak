@@ -47,18 +47,16 @@ doclint:
 	$(PYTHON) scripts/doclint
 	bash plugin/scripts/respeak-check.sh
 
-# scripts/hygiene, scripts/doclint and scripts/bounded are byte-identical to claude-code-session's
-# (conventions section 6), three pinned by hash; a re-sync moves the files and these pins together. The copy source is the
-# claude-code-session checkout beside this one, found from `git rev-parse --git-common-dir`
-# (the main checkout's .git, whose parent's parent holds both repos), never a home path.
+# scripts/{agentik,hygiene,bounded} are vendored from agentik-commons by its `scripts/sync`
+# (agentik-r1 7.3), which writes their sums to scripts/vendored.sha256; a re-sync moves the
+# files and that file together. scripts/doclint stays pinned here until r2 makes it one copy.
 # hygiene reads the private terms from the private list (`$AGENTIK_HYGIENE_PRIVATE`, else the XDG
-# config path), never the repo; its pin is the session's canonical copy again (the hygiene-one re-sync).
-HYGIENE_SHA = acc3498d4ad3555b095f7f12b22c1c1257fc7d8f2f2f6055c34bd0a21ec34421
+# config path), never the repo. Its exits: 0 clean, 1 a hit, 2 usage.
 DOCLINT_SHA = 26eaf2c84aadb822f8d63a0257b063afcc0ba6d9bbcf1d2d856abe4c6388341f
-BOUNDED_SHA = 4fdfdc1df94364d72fdc378acfade979f7be32342c262687931fe49752ac40b2
 
 hygiene:
-	@printf '%s  %s\n' $(HYGIENE_SHA) scripts/hygiene $(DOCLINT_SHA) scripts/doclint $(BOUNDED_SHA) scripts/bounded | shasum -a 256 -c --status || { echo "hygiene: scripts/hygiene, scripts/doclint or scripts/bounded differ from the canonical copies (conventions section 6)"; exit 2; }
+	@shasum -a 256 -c --status scripts/vendored.sha256 || { echo "hygiene: scripts/agentik, scripts/hygiene or scripts/bounded differ from scripts/vendored.sha256; re-run agentik-commons scripts/sync"; exit 2; }
+	@printf '%s  %s\n' $(DOCLINT_SHA) scripts/doclint | shasum -a 256 -c --status || { echo "hygiene: scripts/doclint differs from its pinned copy"; exit 2; }
 	$(PYTHON) scripts/hygiene
 
 # README.md is rendered from design/readme/source.md (conventions section 6); edit the source.

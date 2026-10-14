@@ -50,7 +50,7 @@ class PrivateListTests(unittest.TestCase):
             fh.write("invented\tzorbla[x]\n")
         self.write("notes.md", "a line about Zorblax\n")
         p = self.run_hygiene(listfile=self.listfile)
-        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertEqual(p.returncode, 1, p.stderr)
         self.assertIn("notes.md  invented  1", p.stdout)
         self.assertNotIn("zorbla[x]", p.stdout + p.stderr)
         self.assertNotIn("Zorblax", p.stdout + p.stderr)
@@ -71,7 +71,7 @@ class PrivateListTests(unittest.TestCase):
             fh.write("invented\tquuxfrob\n")
         self.write("notes.md", "quuxfrob\n")
         p = self.run_hygiene(xdg=self.config)
-        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertEqual(p.returncode, 1, p.stderr)
         self.assertIn("notes.md  invented  1", p.stdout)
 
     def test_comments_and_blank_lines_are_skipped(self):
@@ -90,7 +90,7 @@ class PrivateListTests(unittest.TestCase):
         self.assertEqual(p.stderr.splitlines(), [ABSENT_LINE % gone])
         self.write("paths.md", "/Users/" + "someone/x\n")  # split: this file stays clean
         p = self.run_hygiene(listfile=gone)
-        self.assertEqual(p.returncode, 2, p.stdout)
+        self.assertEqual(p.returncode, 1, p.stdout)
         self.assertIn("paths.md  home  1", p.stdout)
 
     def test_require_private_exits_2_on_an_absent_or_unreadable_list(self):
@@ -108,7 +108,7 @@ class PrivateListTests(unittest.TestCase):
         with open(self.listfile, "w", encoding="utf-8") as fh:
             fh.write("# header\ninvented\tzorblax\nno-tab-quuxfrob\ninvented\t(unclosed\n")
         p = self.run_hygiene(listfile=self.listfile)
-        self.assertEqual(p.returncode, 1)
+        self.assertEqual(p.returncode, 2)
         self.assertIn(":3: bad entry", p.stderr)
         self.assertNotIn("quuxfrob", p.stderr)
         self.assertNotIn("zorblax", p.stdout + p.stderr)
