@@ -25,8 +25,10 @@ STATUS_RE = re.compile(
     re.M,
 )
 ICON_LINE = '<img src="assets/icon.svg" alt="" width="56" align="left">'
-# Sibling plugin ids other than the provider; the provider is claude-code-session.
-OTHER_SIBLINGS = re.compile(r"example-app|claude-code-agents|agent-relay|claude-code-decisions", re.I)
+# Sibling plugin ids other than the provider, the old and the agentik-r1 names;
+# the provider is agentik-session.
+OTHER_SIBLINGS = re.compile(r"example-app|claude-code-agents|agent-relay|claude-code-decisions"
+                            r"|agentik-(?:agents|relay|decisions)\b", re.I)
 
 
 def read(path):

@@ -72,3 +72,11 @@ Forbidden: transcripts, `~/.local/state`, `~/.config` (hygiene reads its private
 ## 6. Report (under 1,500 words)
 
 The acceptance table with each line's output; the commits; each ruling beyond §2, one sentence; what went to `NICE_TO_HAVE.md`.
+
+Rulings beyond §2 (builder, 2026-10-13):
+
+- c1's fallback is per resolved file, not per folder; both present, the new wins.
+- No `make readme` (it spawns `claude -p`): README.md and its source took one hand edit, stamped by `readme-fresh.sh --stamp` after the verifier passed.
+- `test_provider_layer.py` names the old folder only as `SESSION_PROVIDER_OLD`: no allow row.
+- Ruling 8's rows dropped: no `.hygiene-live` declares a chain here.
+- `test_readme` also rejects `agentik-{agents,relay,decisions}`; the layout's `.claude-plugin/` line went.
