@@ -116,7 +116,8 @@ profiles:
 modes:
   eli5:
     tech_level: 1
-    reading_level_grade: 6
+    reading_level_grade: 6 # a register cue for the translator; no script
+                           # computes it (see style.readability_metrics)
     max_sentence_words: 15
     length_budget_words: 150
     max_paragraphs: 1
@@ -137,8 +138,8 @@ modes:
 
   bluf:
     tech_level: 2
-    reading_level_grade: 9
-    max_sentence_words: 20 # AR 25-50 / plain-language cap
+    reading_level_grade: 9 # a register cue, not computed (as eli5)
+    max_sentence_words: 20 # a cap; AR 25-50 (10 Oct 2020) 1-39 asks ~15 on average
     length_budget_words: 200
     max_paragraph_sentences: 6 # STE
     structure: bluf # sentence 1 = the decision/result/ask; no preamble
@@ -162,7 +163,8 @@ modes:
   technical:
     tech_level: 4
     reading_level_grade: 12 # UNVERIFIED number — prior art says "a ceiling
-                            # exists" (Hemingway Technical preset), names none
+                            # exists" (Hemingway Technical preset), names none.
+                            # Not computed: see style.readability_metrics.
     max_sentence_words: 25  # was 28 — above every standard; STE descriptive cap
     max_step_words: 20      # STE procedural cap
     length_budget_words: 500
@@ -195,7 +197,12 @@ style:
   positive_form: true          # no double negatives
   same_term_same_concept: true # plainlanguage #11 + STE; lint against lexicon
   quoting_exempt: true         # quotes/code blocks exempt from bans
-  readability_metrics: [flesch_kincaid, gunning_fog] # averaged (Vale semantics)
+  readability_metrics: [flesch_kincaid, gunning_fog] # DECLARED, NOT COMPUTED:
+                        # no script computes a grade; respeak-measure.py counts
+                        # sentence length and em-dash density only. Formulas
+                        # track rated difficulty weakly on specialist text
+                        # (Zheng and Yu 2017, JMIR 19(3):e59: r 0.10 to 0.41),
+                        # so the sentence and paragraph budgets are the checks.
   min_alert_level: { ci: error, interactive: warn }
   budgets: # budgets, not bans (Hemingway model)
     passive_per_10_sentences: 2 # replaces active_voice_min; procedural override = 0
@@ -275,23 +282,29 @@ hooks:
                         # /respeak:off still silence it.
 
 shorthand: # project-only: governance never varies by folder or by user
-  lexicon: corpus/lexicon.yaml
-  proposal_dir: corpus/proposals/
-  ratification: human # human | auto
-  auto: # replaces auto_uses — the shape now carries the semantics
+  # The resolver merges every key below; each is tagged with what holds it.
+  #   [instruction-only] the translator agent's prompt names it; no script checks it
+  #   [not built]        declared; nothing reads it (README: "Declared, not yet checked or built")
+  #   [fixed path]       the scripts and the agent use a fixed path; this key is not read
+  lexicon: corpus/lexicon.yaml # [fixed path] .claude/respeak/lexicon.yaml, else this seed
+  proposal_dir: .claude/respeak/proposals/ # [fixed path] in the project, never the plugin
+  ratification: human # human | auto. [instruction-only]: the agent never ratifies
+  auto: # [not built] the auto-ratification gate; replaces auto_uses
     uses: 5
     fidelity_failures_allowed: 0
     readback_evidence: true # downstream correct action + verified echo (ICAO)
-  legibility_floor: 0.5
-  max_entries: 150            # Gregg: returns diminish fast past ~150 briefs
-  min_token_edit_distance: 2  # QD/QOD, IU/IV near-neighbor failures
-  retire_after_days_unused: 180 # Q-code deprecation pattern
-  review_cadence_days: 90     # ICAO SID/STAR erosion: schedule re-harmonization
-  legibility_audit: { cadence_days: 30, method: fresh-decoder, sample: 10 }
-  register_marker: required   # declare shorthand in-band (ICS "Interco")
-  reserved_metawords: [CORRECTION, SAY-AGAIN, UNVERIFIED]
-  readback_required_for: [irreversible-actions, security-findings, escalations-to-human]
-  decompress_on: [escalation-to-human, incident, repeated-fidelity-failure, new-partner]
+  legibility_floor: 0.5 # [instruction-only] the agent proposes nothing below it
+  max_entries: 150            # [not built] Gregg: returns diminish fast past ~150 briefs
+  min_token_edit_distance: 2  # [not built] QD/QOD, IU/IV near-neighbor failures
+  retire_after_days_unused: 180 # [not built] Q-code deprecation pattern
+  review_cadence_days: 90     # [not built] ICAO SID/STAR erosion: schedule re-harmonization
+  legibility_audit: { cadence_days: 30, method: fresh-decoder, sample: 10 } # [not built]
+  register_marker: required   # [not built] declare shorthand in-band (ICS "Interco")
+  reserved_metawords: [CORRECTION, SAY-AGAIN, UNVERIFIED] # [not built]
+  readback_required_for: [irreversible-actions, security-findings, escalations-to-human] # [not built]
+  decompress_on: [escalation-to-human, incident, repeated-fidelity-failure, new-partner] # [not built]
+  # never_compress: [instruction-only] the agent keeps each class verbatim;
+  # respeak-verify-edit.py also holds numbers across an editorial pass.
   never_compress: # TJC do-not-use format: each ban carries its failure story
     - { class: error-messages-and-stack-traces, failure_mode: verbatim evidence lost }
     - { class: security-findings, failure_mode: high-stakes content must survive any reader }

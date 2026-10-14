@@ -46,7 +46,7 @@ Lowest precedence first. "May set" is explained under
 | # | Layer | File | Edited by | In git | May set |
 | --- | --- | --- | --- | --- | --- |
 | 1 | plugin | `${CLAUDE_PLUGIN_ROOT}/config/respeak.config.yaml` | the plugin | plugin repo | everything |
-| 2 | userConfig | `claude plugin install respeak --config default_mode=bluf` | you, at install | no | `default_mode`, `tech_level`, `auto_narrative` |
+| 2 | userConfig | `claude plugin install respeak@agentik --config default_mode=bluf` | you, at install | no | `default_mode`, `tech_level`, `auto_narrative` |
 | 3 | user | `${CLAUDE_CONFIG_DIR:-~/.claude}/respeak/config.yaml` | you | your dotfiles | tone keys |
 | 4 | ancestors | `<dir>/.respeak.yaml` in every directory above the project root, outermost first | you | no | tone keys |
 | 5 | project | `<project>/.claude/respeak/config.yaml` | the project | yes | everything |

@@ -77,7 +77,7 @@ Made-up policy shortcuts; lengthy comments divided into titled sections; downpla
 ### 1.6 Key studies cited by the page (evidence base)
 
 - Kobak, González-Márquez, Horvát & Lause 2025, "Delving into LLM-assisted writing…", Science Advances 11(27) / arXiv:2406.07016 — excess vocabulary; ≥13.5% of 2024 PubMed abstracts LLM-processed (up to 40% in subcorpora).
-- Juzek & Ward, ACL 2025 Findings, "Why Does ChatGPT 'Delve' So Much?" arXiv:2412.11385 — sources of lexical overrepresentation; RLHF implicated.
+- Juzek & Ward, COLING 2025 (per the arXiv record, read 2026-10-14), "Why Does ChatGPT 'Delve' So Much?" arXiv:2412.11385 — sources of lexical overrepresentation; RLHF implicated.
 - Juzek & Ward, "Word Overuse and Alignment in LLMs: The Influence of Learning from Human Feedback", arXiv:2508.01930.
 - Reinhart et al., PNAS 122(8) 2025, "Do LLMs write like humans? Variation in grammatical and rhetorical styles" — LLMs overuse present participial clauses and nominalizations; instruction-tuned models diverge more than base models.
 - Russell, Karpinska & Iyyer, ACL 2025, arXiv:2501.15654 — expert humans as detectors.
@@ -114,7 +114,7 @@ accentuates, adept, akin, amidst, avenue(s), bolster(ed/ing), boasts, burgeoning
 
 Also flagged in the "common but excess" tier (flag only at density, not per-occurrence): across, additionally, address(es/ing), align(s/ing), alongside, both, broader, challenges, comprehensive, consequently, despite, distinct(ive), diverse, effectively, evolving, however, impact(ful), including, offering, particularly, potential, thereby, thorough, typically, ultimately, valuable, various, within.
 
-### 2.2 Juzek & Ward, ACL Findings 2025 (arXiv:2412.11385), "Why Does ChatGPT 'Delve' So Much?"
+### 2.2 Juzek & Ward, COLING 2025 (arXiv:2412.11385), "Why Does ChatGPT 'Delve' So Much?"
 
 - Identifies focal overused words via scientific-abstract comparison; attributes overuse largely to RLHF/human-feedback preference (raters mildly prefer these words), not (only) training data frequency.
 - Follow-up: "Word Overuse and Alignment in LLMs: The Influence of Learning from Human Feedback" (arXiv:2508.01930) — cited by Wikipedia for "meticulous/meticulously".

@@ -1,4 +1,6 @@
 # Design Principles Synthesis — respeak
+_As of: the Claude Code hook facts in §2 (`last_assistant_message` on Stop, `MessageDisplay` → `displayContent`) are as the docs read on 2026-08-31; the hooks page re-read 2026-10-14 still states both, with no version. Re-open it before citing either in user-facing text._
+
 _Design-synthesis agent output. Date: 2026-08-31. Inputs: docs/architecture.md; research/synthesis/{config-critique,corpus-expansion,solutions-and-media}.md; research/sources/*.md_
 
 ## 1. VERDICT: the two-lane architecture

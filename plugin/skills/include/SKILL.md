@@ -49,8 +49,9 @@ unless asked:
    the repo has a lexicon.
 2. Import it with one line, `@.claude/respeak/include.md` (or the `--out`
    path): in `CLAUDE.md` for Claude Code, in `AGENTS.md` for other tools, or
-   in both. Claude Code reads `AGENTS.md` only in a project with no
-   `CLAUDE.md` of its own.
+   in both. As of Claude Code 2.1.296 (the memory docs, re-read
+   2026-10-14), it reads `AGENTS.md` only in a project with no `CLAUDE.md`
+   of its own.
 3. Check the cap without respeak, in the repo's own check target:
    `test "$(wc -c < .claude/respeak/include.md)" -le 1500`. A repo that runs
    the shared `scripts/hygiene` adds `.claude/respeak/include.md: sibling`

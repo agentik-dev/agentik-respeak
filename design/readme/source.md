@@ -63,11 +63,14 @@ not a benchmark.
 | Banned phrases (error severity) | 3 | 0 |
 | Banned phrases (warn severity) | 9 | 1 (a deliberate, documented keep) |
 | Em-dashes per 1000 words | 19.9 | 3.1 |
-| Average sentence length | 32.1 words | 24.5 words |
+| Average sentence length (before the 2026-09-21 splitter) | 32.1 words | 24.5 words |
 | Headings, links, code, numbers changed | n/a | zero (`respeak-verify-edit.py` passes) |
 
 The pass kept "a genuine platform gap" because the corpus bans `genuinely`,
-not `genuine`.
+not `genuine`. The sentence row predates the 2026-09-21 splitter, which
+reads each list item and table row as its own unit, so it does not compare
+with a current run. The document is no longer in the repository, so the row
+stays as measured.
 
 ## Install
 
@@ -163,10 +166,13 @@ bash plugin/scripts/respeak-config.sh explain --for docs/exec/q3.md
 bash plugin/scripts/render-lexicon-digest.sh                       # after ratifying a proposal
 ```
 
-`respeak-verify-edit.py` proves a style edit meaning-preserving. In `.md`
-it holds headings, block structure, link and image targets, fenced code,
-inline code, numbers, and front matter byte-identical. In code files it
-opens comments only. Proposals land in
+`respeak-verify-edit.py` checks that a style edit kept the structure. In
+`.md` it holds headings, block structure, link and image targets, fenced
+code, inline code, numbers, and front matter byte-identical. In code files
+it opens comments only. It does not check facts: an appended false
+paragraph or a "never" turned to "always" passes (review ADV6-4). Until
+that deferred invariant lands, facts rest on the translator's rule to add
+no fact and drop none. Proposals land in
 `.claude/respeak/proposals/<term>.yaml`. To accept one, move it into
 `.claude/respeak/lexicon.yaml` with `status: ratified` and regenerate the
 digest.
@@ -199,8 +205,8 @@ project's `style.budgets` and `gate.allow`.
 
 **CI.** `plugin/scripts/respeak-check.sh` runs the gate over every Markdown
 file git knows about, from the committed configuration only. `--verify
-<ref>` also proves each edit since the ref meaning-invariant, and a block
-or a changed invariant exits 1.
+<ref>` also runs the verifier on each edit since the ref, and a block or a
+changed invariant exits 1.
 
 ## Where the tone comes from
 
@@ -209,7 +215,7 @@ Configuration resolves from layers, and the layer nearest the target wins:
 | Layer | File | Typical use |
 | --- | --- | --- |
 | plugin defaults | `config/respeak.config.yaml` in the plugin | the shipped contract |
-| plugin userConfig | `claude plugin install respeak --config default_mode=bluf` | a quick personal default |
+| plugin userConfig | `claude plugin install respeak@agentik --config default_mode=bluf` | a quick personal default |
 | user | `~/.claude/respeak/config.yaml` | your default across every repo |
 | project | `.claude/respeak/config.yaml` | the project's baseline; the only place the gate turns on |
 | project local | `.claude/respeak/config.local.yaml` (gitignored) | your override for one repo |
@@ -321,6 +327,7 @@ Declared, not yet checked or built:
 - Usage-based expiry (180 days unused)
 - Auto-ratification gate (5 clean uses required)
 - Fresh-decoder legibility audits (30-day cadence)
+- Review cadence (90 days), register marker, reserved metawords, readback and decompress triggers
 - `respeak compile`: the corpus as a Vale style package
 - A display-only translation hook
 

@@ -53,7 +53,7 @@ The author commits the file at its output path, `.claude/respeak/include.md` by 
 @.claude/respeak/include.md
 ```
 
-For Claude Code the line goes in `CLAUDE.md`. In Claude Code 2.1.296 the `AGENTS.md` loader defaults to `claude-md-or-agents-md`: it reads `AGENTS.md` only in a project with no `CLAUDE.md` of its own, so an `@` line in `AGENTS.md` does nothing beside a `CLAUDE.md`. For other tools the line goes in `AGENTS.md`. A repo that serves both puts it in both.
+For Claude Code the line goes in `CLAUDE.md`. As of Claude Code 2.1.296 (read 2026-10-11), the `AGENTS.md` loader defaults to `claude-md-or-agents-md`: it reads `AGENTS.md` only in a project with no `CLAUDE.md` of its own, so an `@` line in `AGENTS.md` does nothing beside a `CLAUDE.md`. The memory page, re-read 2026-10-14, says the same and that reading `AGENTS.md` at all needs v2.1.277 or later. A loader default can change: re-open that page before citing this in user-facing text. For other tools the line goes in `AGENTS.md`. A repo that serves both puts it in both.
 
 A user may also import a copy from their own `~/.claude/CLAUDE.md` by hand. That is optional, and no script does it.
 
