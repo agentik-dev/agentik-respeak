@@ -328,6 +328,7 @@ Declared, not yet checked or built:
 - Usage-based expiry (180 days unused)
 - Auto-ratification gate (5 clean uses required)
 - Fresh-decoder legibility audits (30-day cadence)
+- Review cadence (90 days), register marker, reserved metawords, readback and decompress triggers
 - `respeak compile`: the corpus as a Vale style package
 - A display-only translation hook
 
