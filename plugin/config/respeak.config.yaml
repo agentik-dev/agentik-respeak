@@ -282,23 +282,29 @@ hooks:
                         # /respeak:off still silence it.
 
 shorthand: # project-only: governance never varies by folder or by user
-  lexicon: corpus/lexicon.yaml
+  # The resolver merges every key below; each is tagged with what holds it.
+  #   [instruction-only] the translator agent's prompt names it; no script checks it
+  #   [not built]        declared; nothing reads it (README: "Declared, not yet checked or built")
+  #   [fixed path]       the scripts and the agent use a fixed path; this key is not read
+  lexicon: corpus/lexicon.yaml # [fixed path] .claude/respeak/lexicon.yaml, else this seed
   proposal_dir: corpus/proposals/
-  ratification: human # human | auto
-  auto: # replaces auto_uses — the shape now carries the semantics
+  ratification: human # human | auto. [instruction-only]: the agent never ratifies
+  auto: # [not built] the auto-ratification gate; replaces auto_uses
     uses: 5
     fidelity_failures_allowed: 0
     readback_evidence: true # downstream correct action + verified echo (ICAO)
-  legibility_floor: 0.5
-  max_entries: 150            # Gregg: returns diminish fast past ~150 briefs
-  min_token_edit_distance: 2  # QD/QOD, IU/IV near-neighbor failures
-  retire_after_days_unused: 180 # Q-code deprecation pattern
-  review_cadence_days: 90     # ICAO SID/STAR erosion: schedule re-harmonization
-  legibility_audit: { cadence_days: 30, method: fresh-decoder, sample: 10 }
-  register_marker: required   # declare shorthand in-band (ICS "Interco")
-  reserved_metawords: [CORRECTION, SAY-AGAIN, UNVERIFIED]
-  readback_required_for: [irreversible-actions, security-findings, escalations-to-human]
-  decompress_on: [escalation-to-human, incident, repeated-fidelity-failure, new-partner]
+  legibility_floor: 0.5 # [instruction-only] the agent proposes nothing below it
+  max_entries: 150            # [not built] Gregg: returns diminish fast past ~150 briefs
+  min_token_edit_distance: 2  # [not built] QD/QOD, IU/IV near-neighbor failures
+  retire_after_days_unused: 180 # [not built] Q-code deprecation pattern
+  review_cadence_days: 90     # [not built] ICAO SID/STAR erosion: schedule re-harmonization
+  legibility_audit: { cadence_days: 30, method: fresh-decoder, sample: 10 } # [not built]
+  register_marker: required   # [not built] declare shorthand in-band (ICS "Interco")
+  reserved_metawords: [CORRECTION, SAY-AGAIN, UNVERIFIED] # [not built]
+  readback_required_for: [irreversible-actions, security-findings, escalations-to-human] # [not built]
+  decompress_on: [escalation-to-human, incident, repeated-fidelity-failure, new-partner] # [not built]
+  # never_compress: [instruction-only] the agent keeps each class verbatim;
+  # respeak-verify-edit.py also holds numbers across an editorial pass.
   never_compress: # TJC do-not-use format: each ban carries its failure story
     - { class: error-messages-and-stack-traces, failure_mode: verbatim evidence lost }
     - { class: security-findings, failure_mode: high-stakes content must survive any reader }
