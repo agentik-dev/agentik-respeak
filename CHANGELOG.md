@@ -4,6 +4,13 @@ Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
 ## Unreleased
 
+- The shipped config drops the ten `shorthand.*` keys nothing read:
+  `auto`, `max_entries`, `min_token_edit_distance`,
+  `retire_after_days_unused`, `review_cadence_days`, `legibility_audit`,
+  `register_marker`, `reserved_metawords`, `readback_required_for` and
+  `decompress_on`. A project file that still sets one resolves and
+  validates as before, with no default under it; `NICE_TO_HAVE.md` holds
+  the plan.
 - `scripts/hygiene` keeps only the generic groups (`home`, `lan`,
   `sibling`, `secret`, `email`). It reads the terms private to one owner from
   a private list outside the repo: `$AGENTIK_HYGIENE_PRIVATE`, else

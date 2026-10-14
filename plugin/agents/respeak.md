@@ -228,8 +228,7 @@ You are also the librarian of the shorthand lane:
 
 Begin with one marker line, `📣 respeak · <mode>` (append ` · <profile>`
 when a profile applied), so the reader can tell a translation from the
-calling agent's own voice; it is the human lane's counterpart to the
-machine lane's `register_marker`. Then return only the rendered narrative
+calling agent's own voice. Then return only the rendered narrative
 (plus, when relevant, one final line each: `lexicon: N proposals written`,
 and — when the input gate removed or rewrote anything — `gate: N banned
 terms removed from source`). No other preamble, no process notes, no
