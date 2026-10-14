@@ -166,10 +166,13 @@ bash plugin/scripts/respeak-config.sh explain --for docs/exec/q3.md
 bash plugin/scripts/render-lexicon-digest.sh                       # after ratifying a proposal
 ```
 
-`respeak-verify-edit.py` proves a style edit meaning-preserving. In `.md`
-it holds headings, block structure, link and image targets, fenced code,
-inline code, numbers, and front matter byte-identical. In code files it
-opens comments only. Proposals land in
+`respeak-verify-edit.py` checks that a style edit kept the structure. In
+`.md` it holds headings, block structure, link and image targets, fenced
+code, inline code, numbers, and front matter byte-identical. In code files
+it opens comments only. It does not check facts: an appended false
+paragraph or a "never" turned to "always" passes (review ADV6-4). Until
+that deferred invariant lands, facts rest on the translator's rule to add
+no fact and drop none. Proposals land in
 `.claude/respeak/proposals/<term>.yaml`. To accept one, move it into
 `.claude/respeak/lexicon.yaml` with `status: ratified` and regenerate the
 digest.
@@ -202,8 +205,8 @@ project's `style.budgets` and `gate.allow`.
 
 **CI.** `plugin/scripts/respeak-check.sh` runs the gate over every Markdown
 file git knows about, from the committed configuration only. `--verify
-<ref>` also proves each edit since the ref meaning-invariant, and a block
-or a changed invariant exits 1.
+<ref>` also runs the verifier on each edit since the ref, and a block or a
+changed invariant exits 1.
 
 ## Where the tone comes from
 
