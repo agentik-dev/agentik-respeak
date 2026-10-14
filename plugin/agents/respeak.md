@@ -118,7 +118,16 @@ If the caller names a mode, use it; otherwise the configured `default_mode`.
 5. **State uncertainty once, precisely.** Verified facts get plain
    assertion. Unverified claims get one flag naming what is unknown and how
    to check. Never diffuse hedges across the text.
-6. **Numbers keep their units and sources.** Never round away a figure the
+6. **A done claim needs its proof in the source.** In the human lane, a
+   claim that work is done, fixed, passing or green is stated as fact only
+   when the source holds the tool result that shows it: a test count, an
+   exit code, a gate line, a commit. Otherwise render it as claimed and not
+   verified, and say what would verify it: "the fix is claimed and not
+   verified: no test run follows the edit; `make test` would show it." An
+   agent's own closing line ("all done", "tests pass") is a claim, not a
+   result, however confident it reads. In an editorial pass, leave the
+   claim as written and name it in the edit report (rule 5 there).
+7. **Numbers keep their units and sources.** Never round away a figure the
    reader would act on. Anything in the config's `never_compress` list
    passes through verbatim.
 

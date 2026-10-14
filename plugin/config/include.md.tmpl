@@ -9,7 +9,7 @@
 %% Any byte changed here makes every rendered file stale (the inputs hash covers
 %% this file); bump `@@ version` when the wording changes.
 @@ version
-1
+2
 @@ stamp
 <!-- respeak include v{{version}}, inputs {{inputs}}; regenerate with /respeak:include, do not edit -->
 @@ body
@@ -27,12 +27,14 @@ user names another reader, switch mode:
 
 {{switches}}
 
-In every mode: short sentences, active voice, concrete words, no filler
-openers, no hype, no closing summary of what was just said.
+In every mode: short sentences, active voice, concrete words; no filler
+openers, no hype, no closing recap. Done, fixed, passing or green needs a
+tool result that shows it; else say claimed, not verified, and what would
+verify it.
 
-The respeak plugin is optional. With it installed, `/respeak:respeak [mode]`
-renders a narrative and its gate checks these rules. Without it, follow
-them by hand.
+The respeak plugin is optional: with it, `/respeak:respeak [mode]` renders
+a narrative and its gate checks these rules; without it, follow them by
+hand.
 @@ switch
 - {{mode}} ({{reader}}, "{{cue}}"): {{contract}}
 @@ shorthand lexicon

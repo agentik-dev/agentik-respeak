@@ -100,6 +100,14 @@ The sources behind each design concept, fetched and read during the research run
 - Crucial Conversations: facts before stories; contrasting statements.
   <https://cruciallearning.com/crucial-conversations-book/>
 
+**Agent status claims (the done-claim rule)**
+
+- Advani, *From Confident Closing to Silent Failure* (arXiv:2606.09863,
+  2026), read 2026-10-14: 75.8% of failed AppWorld coding-agent runs with
+  an explicit status claim claimed success. So the translator states a
+  done claim as fact only beside the tool result that shows it.
+  <https://arxiv.org/abs/2606.09863>
+
 **The substrate (Anthropic engineering + Claude Code)**
 
 - *Writing effective tools for agents*: the ResponseFormat precedent for

@@ -11,6 +11,12 @@ Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
   `decompress_on`. A project file that still sets one resolves and
   validates as before, with no default under it; `NICE_TO_HAVE.md` holds
   the plan.
+- The translator states that work is done, fixed, passing or green only
+  when the source holds the tool result that shows it. Otherwise it renders
+  the claim as claimed and not verified, with what would verify it. The
+  include template, now v2, carries the rule in one sentence and shortens
+  two others to stay under the cap. Every rendered include reads stale
+  until `/respeak:include write` runs again.
 - `scripts/hygiene` keeps only the generic groups (`home`, `lan`,
   `sibling`, `secret`, `email`). It reads the terms private to one owner from
   a private list outside the repo: `$AGENTIK_HYGIENE_PRIVATE`, else
