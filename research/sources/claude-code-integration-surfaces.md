@@ -2,6 +2,8 @@
 
 *Research notes, 2026-08-31, verified against code.claude.com; rewritten as an educational primer 2026-09-15.*
 
+*As of: each Claude Code fact here is as the docs read on those dates and can change in any release. On 2026-10-14 the hooks page still documented `last_assistant_message` on Stop and `MessageDisplay` returning `displayContent`, and the subagents page still said plugin subagents ignore `hooks`, `mcpServers` and `permissionMode`; none of the three carries a version. Re-open the docs before citing any of them in user-facing text.*
+
 Claude Code's documentation now lives at code.claude.com; old docs.claude.com links redirect there. Claude Code exposes eight distinct extension points. respeak, a two-lane communication plugin, uses them for one reason: the swarm's shorthand stays in the model's context, and the human reader still gets prose.
 
 ## Subagents

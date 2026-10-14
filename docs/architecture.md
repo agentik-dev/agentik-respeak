@@ -131,6 +131,9 @@ No agent both proposes and ratifies a convention.
 
 ## Resolved questions (details: research/synthesis/design-principles.md §2)
 
+The hook facts below are as the Claude Code hooks page stated them when
+re-read on 2026-10-14; re-open that page before relying on them.
+
 1. **Milestone auto-narrative → hooks, never cron.** Layered: a `Stop` hook
    (input carries `last_assistant_message`) with an async milestone heuristic;
    `SubagentStop`/`TaskCompleted` for swarm workers and phase boundaries; and
