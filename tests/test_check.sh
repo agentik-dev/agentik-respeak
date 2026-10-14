@@ -58,9 +58,9 @@ printf 'gate: {enabled: false}\n' > "$work/env.yaml"
 out="$(cd "$proj" && RESPEAK_CONFIG="$work/env.yaml" bash "$CHECK" docs/bad.md 2>&1)"; rc=$?
 check "committed: RESPEAK_CONFIG at enabled false still blocks" 1 "$rc"
 check_out "...and is not a skip" '0 passed, 0 skipped, 1 blocked' "$out"
-mkdir -p "$work/state/claude-code-session/sessions/s1"
-printf '{"provider": {"name": "claude-code-session", "version": "2.0"}, "respeak": {"gate": {"fail_on": "none"}}}\n' \
-  > "$work/state/claude-code-session/sessions/s1/resolved.json"
+mkdir -p "$work/state/agentik-session/sessions/s1"
+printf '{"provider": {"name": "agentik-session", "version": "2.0"}, "respeak": {"gate": {"fail_on": "none"}}}\n' \
+  > "$work/state/agentik-session/sessions/s1/resolved.json"
 out="$(cd "$proj" && XDG_STATE_HOME="$work/state" CLAUDE_CODE_SESSION_ID=s1 bash "$CHECK" docs/bad.md 2>&1)"; rc=$?
 check "committed: a session provider at fail_on none still blocks" 1 "$rc"
 

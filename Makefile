@@ -1,12 +1,15 @@
-# claude-code-respeak: the repo's checks (conventions section 5).
+# agentik-respeak: the repo's checks (conventions section 5).
 # PYTHON is the pyenv virtualenv .python-version declares; override on the command line. When
 # its python3 exists it is found by path, with no process: the pyenv shim takes a lock that
-# stalled every make under load (review R6, T2). `lint` checks the name against .python-version.
+# stalled every make under load (review R6, T2). `lint` checks the first name against
+# .python-version's first line. Its second line, VENV_OLD, is the venv's name before agentik-r1
+# (c10): used while `make venv` has not yet built the new one; r2 removes it.
 PYENV_ROOT ?= $(HOME)/.pyenv
-VENV = claude-code-respeak
-VENV_PYTHON = $(PYENV_ROOT)/versions/$(VENV)/bin/python3
+VENV = agentik-respeak
+VENV_OLD = claude-code-respeak
+VENV_PYTHON = $(firstword $(wildcard $(foreach v,$(VENV) $(VENV_OLD),$(PYENV_ROOT)/versions/$(v)/bin/python3)))
 ifeq ($(origin PYTHON),undefined)
-PYTHON := $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),$(shell python3 -c 'import sys; print(sys.executable)'))
+PYTHON := $(or $(VENV_PYTHON),$(shell python3 -c 'import sys; print(sys.executable)'))
 endif
 export PYTHON
 # Its bin dir first on PATH, so every recipe, and every hook a suite runs, skips the shim.
@@ -16,8 +19,8 @@ CLAUDE ?= claude
 
 .PHONY: check check-unlocked test lint doclint hygiene readme readme-fresh validate doctor install
 
-# check runs under scripts/bounded, a verbatim copy of claude-code-session's (conventions section 5,
-# pinned by hash below): one per tree by the lock .check.lock, an 840 s wall, held off above load 4 x cores.
+# check runs under scripts/bounded, vendored from agentik-commons (conventions section 5,
+# its sum in scripts/vendored.sha256): one per tree by the lock .check.lock, an 840 s wall, held off above load 4 x cores.
 # make check exits 0, or 2 for any failure: make reads every failure as 2, so the exit alone does
 # not tell a refusal from a red suite. A `bounded: stop: lock|load|wall` line means the suite did
 # not run to its end: unrun, never red (section 5). The relay's gate reads the last such line
@@ -41,7 +44,7 @@ test:
 lint:
 	$(PYTHON) -m compileall -q scripts plugin/scripts tests
 	$(PYTHON) -c 'import sys; assert sys.version_info >= (3, 12)'
-	@[ "$$(cat .python-version)" = "$(VENV)" ] || { echo "lint: .python-version is not $(VENV); update VENV in the Makefile"; exit 2; }
+	@[ "$$(head -n 1 .python-version)" = "$(VENV)" ] || { echo "lint: .python-version's first line is not $(VENV); update VENV in the Makefile"; exit 2; }
 
 doclint:
 	$(PYTHON) scripts/doclint
@@ -69,27 +72,29 @@ readme-fresh:
 	bash scripts/readme-fresh.sh
 
 validate:
-	@if command -v $(CLAUDE) >/dev/null 2>&1; then $(DEADLINE) 60 sh -c '$(CLAUDE) plugin validate plugin/ && $(CLAUDE) plugin validate .' </dev/null; \
+	@if command -v $(CLAUDE) >/dev/null 2>&1; then $(DEADLINE) 60 $(CLAUDE) plugin validate plugin/ </dev/null; \
 	else echo "validate: skipped, no $(CLAUDE) on PATH"; fi
 
 # One line per check: python, claude, marketplace, plugin, provider, config (conventions section 3).
 doctor:
 	bash plugin/scripts/respeak-doctor.sh
 
-# Install the plugin from THIS checkout (conventions section 2). Adds the marketplace when absent,
-# updates it when it already points here, and never removes a registration: any other source is
-# printed with the two commands the owner would run, and the target exits 2.
+# Install the plugin from the `agentik` marketplace (agentik-r1 5.2, conventions section 2). It never
+# adds or removes a marketplace: with `agentik` known it installs respeak@agentik, or updates it when
+# listed; without it, it prints the line that adds the marketplace and exits 2. respeak puts no
+# command on PATH in r1 (agentik-r1 D4).
 install:
 	@command -v $(CLAUDE) >/dev/null 2>&1 || { echo "install: no claude CLI at CLAUDE=$(CLAUDE); set CLAUDE=/path/to/claude"; exit 2; }
-	@src="$$($(CLAUDE) plugin marketplace list --json | $(PYTHON) -c 'import json,sys; m=[m for m in json.load(sys.stdin) if m.get("name")=="claude-code-respeak"]; print(m[0].get("path") or m[0].get("repo") or m[0].get("url") or m[0].get("source") if m else "")')" || exit 2; \
-	if [ -z "$$src" ]; then \
-	  $(CLAUDE) plugin marketplace add "$(CURDIR)" && $(CLAUDE) plugin install respeak@claude-code-respeak; \
-	elif [ "$$src" = "$(CURDIR)" ]; then \
-	  $(CLAUDE) plugin marketplace update claude-code-respeak && $(CLAUDE) plugin update respeak@claude-code-respeak; \
-	else \
-	  echo "install: marketplace claude-code-respeak comes from $$src, not $(CURDIR)"; \
-	  echo "install: to install from this checkout, run:"; \
-	  echo "  claude plugin marketplace remove claude-code-respeak"; \
-	  echo "  make install"; \
+	@mkts="$$($(CLAUDE) plugin marketplace list --json)" || exit 2; \
+	known="$$(printf '%s' "$$mkts" | $(PYTHON) -c 'import json,sys; print(any(m.get("name")=="agentik" for m in json.load(sys.stdin)))')" || exit 2; \
+	if [ "$$known" != True ]; then \
+	  echo "install: the agentik marketplace is not known to claude; add it, then run make install again:"; \
+	  echo "  claude plugin marketplace add agentik-dev/agentik-commons"; \
 	  exit 2; \
+	fi; \
+	listed="$$($(CLAUDE) plugin list --json | $(PYTHON) -c 'import json,sys; print(any(p.get("id")=="respeak@agentik" for p in json.load(sys.stdin)))')" || exit 2; \
+	if [ "$$listed" = True ]; then \
+	  $(CLAUDE) plugin update respeak@agentik; \
+	else \
+	  $(CLAUDE) plugin install respeak@agentik; \
 	fi

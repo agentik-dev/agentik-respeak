@@ -3,14 +3,18 @@
 #
 #   python: <path> <version> pyyaml=<yes|no>
 #   claude: <version>                                   | claude: missing
-#   marketplace: claude-code-respeak <source> <path>    | marketplace: none
-#   plugin: respeak@claude-code-respeak <v>, manifest <v> | plugin: not installed
+#   marketplace: agentik <source> <path>                | marketplace: none
+#   plugin: respeak@agentik <v>, manifest <v>           | plugin: not installed
 #   provider: ...        (the line `respeak-config.sh explain --for README.md` prints)
 #   config: <n> unknown keys   (user, project and project-local files; never fatal)
 #
 # Exit 0, or 2 when no python3 can import PyYAML (every hook is then a no-op).
 # Reads only: the plugin's own files, `claude --version`, and the two
 # `claude plugin ... --json` lists. Writes nothing. bash 3.2 compatible.
+#
+# Before the switch (agentik-r1 c7) a machine still knows the marketplace and the
+# plugin ID from before agentik-r1: the doctor names them with a warning,
+# `; old, the switch moves it` and `; old id, use respeak@agentik`. r2 drops them.
 set -u
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
@@ -18,6 +22,8 @@ root="${CLAUDE_PLUGIN_ROOT:-$(cd "$script_dir/.." && pwd)}"
 . "$script_dir/respeak-python.sh"
 py="${RESPEAK_PY:-${RESPEAK_PY_STD:-}}"
 rc=0
+new_mkt="agentik"
+old_mkt="claude-code-respeak"
 
 # python
 if [ -n "$py" ]; then
@@ -47,11 +53,26 @@ if r:
 if command -v claude >/dev/null 2>&1; then
   cver="$(claude --version 2>/dev/null | head -n 1)"
   echo "claude: ${cver%% *}"
-  mkt="$(claude plugin marketplace list --json 2>/dev/null | json_field \
-    '" ".join(str(x) for x in next((m.get("source", "?"), m.get("path") or m.get("repo") or m.get("url") or m.get("installLocation", "?")) for m in d if m.get("name") == "claude-code-respeak"))')"
-  if [ -n "$mkt" ]; then echo "marketplace: claude-code-respeak $mkt"; else echo "marketplace: none"; fi
-  inst="$(claude plugin list --json 2>/dev/null | json_field \
-    'next(str(p.get("version", "?")) for p in d if p.get("id") == "respeak@claude-code-respeak")')"
+  mlist="$(claude plugin marketplace list --json 2>/dev/null)"
+  plist="$(claude plugin list --json 2>/dev/null)"
+  # mkt_of <name>: "<source> <path>" of that marketplace; inst_of <id>: that plugin's version
+  mkt_of() { printf '%s' "$mlist" | json_field \
+    '" ".join(str(x) for x in next((m.get("source", "?"), m.get("path") or m.get("repo") or m.get("url") or m.get("installLocation", "?")) for m in d if m.get("name") == "'"$1"'"))'; }
+  inst_of() { printf '%s' "$plist" | json_field \
+    'next(str(p.get("version", "?")) for p in d if p.get("id") == "'"$1"'")'; }
+  mkt="$(mkt_of "$new_mkt")"
+  if [ -n "$mkt" ]; then
+    echo "marketplace: $new_mkt $mkt"
+  else
+    mkt="$(mkt_of "$old_mkt")"
+    if [ -n "$mkt" ]; then echo "marketplace: $old_mkt $mkt; old, the switch moves it"; else echo "marketplace: none"; fi
+  fi
+  pid="respeak@$new_mkt"; note=""
+  inst="$(inst_of "$pid")"
+  if [ -z "$inst" ]; then
+    inst="$(inst_of "respeak@$old_mkt")"
+    [ -n "$inst" ] && { pid="respeak@$old_mkt"; note="; old id, use respeak@$new_mkt"; }
+  fi
 else
   echo "claude: missing"
   echo "marketplace: none"
@@ -59,7 +80,7 @@ else
 fi
 if [ -n "$inst" ]; then
   mver="$(json_field 'd.get("version")' < "$root/.claude-plugin/plugin.json")"
-  echo "plugin: respeak@claude-code-respeak $inst, manifest ${mver:-unknown}"
+  echo "plugin: $pid $inst, manifest ${mver:-unknown}$note"
 else
   echo "plugin: not installed"
 fi

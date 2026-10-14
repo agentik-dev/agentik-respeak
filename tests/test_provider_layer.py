@@ -1,9 +1,11 @@
 """Tests for the session provider layer in scripts/respeak-config.py.
 
-claude-code-session, when installed, writes a resolved file per session; the
+agentik-session, when installed, writes a resolved file per session; the
 resolver reads its `respeak` section as one tone-key layer between the folders
 and $RESPEAK_CONFIG, accepted only from provider major SESSION_PROVIDER_MAJOR.
-Every other case is an empty layer, at most one warning, never fatal.
+Every other case is an empty layer, at most one warning, never fatal. Until
+the provider's state folder moves (agentik-r1 c1), the file is read from the
+old folder, SESSION_PROVIDER_OLD, when only that one holds it.
 
 Run: python3 -m unittest tests.test_provider_layer
 """
@@ -48,8 +50,8 @@ class ProviderLayer(unittest.TestCase):
         e.update(extra)
         return e
 
-    def write_resolved(self, body, sid=SID):
-        d = os.path.join(self.state, "claude-code-session", "sessions", sid)
+    def write_resolved(self, body, sid=SID, folder=rc.SESSION_PROVIDER):
+        d = os.path.join(self.state, folder, "sessions", sid)
         os.makedirs(d, exist_ok=True)
         path = os.path.join(d, "resolved.json")
         with open(path, "w") as f:
@@ -74,7 +76,7 @@ class ProviderLayer(unittest.TestCase):
         self.assertEqual(res.origins["narrative.default_mode"], path + "#respeak")
         self.assertEqual(res.warnings, [])
         self.assertEqual(res.provider_line(),
-                         "provider: claude-code-session %s profile deep" % VERSION_OK)
+                         "provider: agentik-session %s profile deep" % VERSION_OK)
         kinds = [lay.kind for lay in res.layers]
         self.assertLess(kinds.index("session"), kinds.index("invocation"))
 
@@ -156,7 +158,7 @@ class ProviderLayer(unittest.TestCase):
         self.write_resolved(body)
         res = self.resolve(session_id=SID)
         self.assertEqual(res.warnings, [])
-        self.assertTrue(res.provider_line().startswith("provider: claude-code-session "))
+        self.assertTrue(res.provider_line().startswith("provider: agentik-session "))
         self.assertNotIn("session", [lay.kind for lay in res.layers])
 
     def test_file_is_never_written(self):
@@ -184,10 +186,33 @@ class ProviderLayer(unittest.TestCase):
             return [l for l in out.stdout.splitlines() if l.startswith("provider: ")]
 
         self.assertEqual(explain("--session", SID),
-                         ["provider: claude-code-session %s profile deep" % VERSION_OK])
+                         ["provider: agentik-session %s profile deep" % VERSION_OK])
         self.assertEqual(explain(), ["provider: none"])
         self.assertEqual(explain("--brief", "--session", SID),
-                         ["provider: claude-code-session %s profile deep" % VERSION_OK])
+                         ["provider: agentik-session %s profile deep" % VERSION_OK])
+
+    # agentik-r1 c1: the new folder when it holds the file, else the old one when
+    # it does, else the new one.
+    def test_the_old_folder_is_read_when_only_it_holds_the_file(self):
+        path = self.write_resolved(self.resolved(), folder=rc.SESSION_PROVIDER_OLD)
+        self.assertEqual(rc.session_state_path(SID, self.env()), path)
+        res = self.resolve(session_id=SID)
+        self.assertEqual(res.origins["narrative.default_mode"], path + "#respeak")
+        self.assertEqual(res.provider_line(),
+                         "provider: agentik-session %s profile deep" % VERSION_OK)
+
+    def test_the_new_folder_wins_when_both_hold_the_file(self):
+        self.write_resolved(self.resolved(respeak={"narrative": {"default_mode": "eli5"}}),
+                            folder=rc.SESSION_PROVIDER_OLD)
+        path = self.write_resolved(self.resolved())
+        res = self.resolve(session_id=SID)
+        self.assertEqual(rc.get_dotted(res.config, "narrative.default_mode"), "bluf")
+        self.assertEqual(res.origins["narrative.default_mode"], path + "#respeak")
+
+    def test_neither_folder_names_the_new_path(self):
+        self.assertEqual(rc.session_state_path(SID, self.env()),
+                         os.path.join(self.state, "agentik-session", "sessions", SID,
+                                      "resolved.json"))
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ The contract, with worked examples, is docs/config-layers.md. In one screen:
                 match the target, applied right after their file
   8 folders     <dir>/.respeak.yaml (+ .respeak.local.yaml) from     tone keys
                 the project root down to the target, nearest last
-  9 session     the `respeak` section of claude-code-session's       tone keys
+  9 session     the `respeak` section of agentik-session's           tone keys
                 resolved file (below), when present and accepted
  10 env         files listed in $RESPEAK_CONFIG (colon-separated)   everything
  11 invocation  --mode / --profile / --context / --set               everything
@@ -35,10 +35,11 @@ pointers, version, schema) are dropped with a warning when a user, ancestor,
 folder, or scope layer sets them. `narrative.profile: NAME` in a layer expands
 that profile's fields underneath the layer's own explicit keys.
 
-The session layer is optional: claude-code-session, when installed, writes
-${XDG_STATE_HOME:-~/.local/state}/claude-code-session/sessions/<id>/resolved.json;
-<id> is --session, else $CLAUDE_CODE_SESSION_ID. The
-file is accepted when provider.version has major SESSION_PROVIDER_MAJOR, and
+The session layer is optional: agentik-session, when installed, writes
+${XDG_STATE_HOME:-~/.local/state}/agentik-session/sessions/<id>/resolved.json;
+<id> is --session, else $CLAUDE_CODE_SESSION_ID. Until the provider's state
+folder moves (agentik-r1 c1), the file is read from SESSION_PROVIDER_OLD's
+folder when only that one holds it. The file is accepted when provider.version has major SESSION_PROVIDER_MAJOR, and
 never written here. Absent, unreadable, a wrong major or no id: an empty
 layer and at most one warning; respeak behaves as it does alone.
 
@@ -134,10 +135,13 @@ BLOCK_ON_VALUES = ("introduced", "any")
 # resolver's gate decision agree on exactly this set (docs/config-layers.md).
 MARKDOWN_EXTS = (".md", ".markdown", ".mdx")
 
-# The session provider (conventions section 3): claude-code-session's resolved
+# The session provider (conventions section 3): agentik-session's resolved
 # file for this session, accepted only from the provider major this resolver
 # understands. A change to the file's contract bumps that major.
-SESSION_PROVIDER = "claude-code-session"
+SESSION_PROVIDER = "agentik-session"
+# The provider's state folder before agentik-r1 (c1): read when the new one has
+# no file for the session and this one has; r2 removes it.
+SESSION_PROVIDER_OLD = "claude-code-session"
 SESSION_PROVIDER_MAJOR = 2
 SESSION_ID_ENV = ("CLAUDE_CODE_SESSION_ID",)
 SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -619,9 +623,15 @@ def project_layers(project, warnings, cfgdir, committed=None):
 
 
 def session_state_path(session_id, env):
+    """The session's resolved file: the new folder's when it exists, else the
+    old folder's when that exists, else the new folder's (agentik-r1 c1)."""
     state = env.get("XDG_STATE_HOME") or os.path.join(
         env.get("HOME") or os.path.expanduser("~"), ".local", "state")
-    return os.path.join(state, SESSION_PROVIDER, "sessions", session_id, "resolved.json")
+    new, old = (os.path.join(state, folder, "sessions", session_id, "resolved.json")
+                for folder in (SESSION_PROVIDER, SESSION_PROVIDER_OLD))
+    if not os.path.isfile(new) and os.path.isfile(old):
+        return old
+    return new
 
 
 def session_layer(session_id, env, warnings):
@@ -1270,7 +1280,7 @@ def add_common(p):
     p.add_argument("--context", choices=("incident", "routine", "celebration"), default=None)
     p.add_argument("--set", action="append", default=[], metavar="KEY=VALUE")
     p.add_argument("--session", default=None, metavar="ID",
-                   help="session id for claude-code-session's resolved file "
+                   help="session id for agentik-session's resolved file "
                         "(default: $CLAUDE_CODE_SESSION_ID)")
 
 
