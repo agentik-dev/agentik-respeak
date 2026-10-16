@@ -26,3 +26,4 @@ Nothing here blocks a review or a merge. An item leaves when it lands, or when a
 - (agentik-r1 review, S4) `make install` with only the old ID listed installs `respeak@agentik` and prints no hint to disable the old ID; echo the `claude plugin disable` line.
 - (agentik-r1 review, S4) `make install` on a malformed or empty plugin list exits 2 with a raw Python traceback; print one `install:` line naming the cause.
 - (agentik-r1 review, S4) The Makefile's `$(wildcard)` venv pick takes a dangling new-venv `python3` link over a working old venv; test with `-x`.
+- (agentik-research, 2026-10-14, S4) The gate's sentence splitter does not split after a footnote marker (`.[^key] Next`), so `max_sentence_words` warns on footnoted pages with counts of 56 to 79 words that are two or three sentences each. The research site's editors left the footnotes in place. Fix: treat `[^key]` after a sentence's end as part of that sentence, then split.
