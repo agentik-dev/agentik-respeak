@@ -1063,17 +1063,20 @@ class V043CLI(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # r2: a shorthand key with no observable behaviour is not shipped (README:
 # a config field with no observable behaviour is deleted); NICE_TO_HAVE.md
-# holds the plan for the removed ones.
+# holds the plan for the removed ones. r16 returns each key with its reader,
+# scripts/respeak-lexicon.py.
 # ---------------------------------------------------------------------------
 
 class ShorthandGovernanceKeys(unittest.TestCase):
     SHIPPED = os.path.join(PLUGIN, "config", "respeak.config.yaml")
     # tagged [not built] in 66531f7: declared, and nothing read them
-    NOT_BUILT = ("auto", "max_entries", "min_token_edit_distance", "retire_after_days_unused",
+    NOT_BUILT = ("auto", "retire_after_days_unused",
                  "review_cadence_days", "legibility_audit", "register_marker",
                  "reserved_metawords", "readback_required_for", "decompress_on")
-    # the keys with behaviour: a fixed path the scripts use, or the translator's prompt
-    KEPT = {"lexicon", "proposal_dir", "ratification", "legibility_floor", "never_compress"}
+    # the keys with behaviour: a fixed path the scripts use, the translator's prompt,
+    # or respeak-lexicon.py (r16: check reads the cap and the distance)
+    KEPT = {"lexicon", "proposal_dir", "ratification", "legibility_floor", "never_compress",
+            "max_entries", "min_token_edit_distance"}
 
     def setUp(self):
         self.fx = Fixture()
@@ -1092,14 +1095,14 @@ class ShorthandGovernanceKeys(unittest.TestCase):
 
     def test_a_file_that_still_sets_one_gets_the_unknown_key_treatment(self):
         # from a user layer: shorthand.* is project-only, dropped with the warning
-        self.fx.user("shorthand: {max_entries: 150}\n")
+        self.fx.user("shorthand: {register_marker: \"~\"}\n")
         res = self.fx.resolve()
         self.assertIn("%s: shorthand is project-only; ignored"
                       % os.path.join(self.fx.cfgdir, "respeak", "config.yaml"), res.warnings)
-        self.assertIsNone(rc.get_dotted(res.config, "shorthand.max_entries"))
+        self.assertIsNone(rc.get_dotted(res.config, "shorthand.register_marker"))
         # from a project layer: merged as any unknown nested key is, and read by nothing;
         # validate refuses no old file for it
         proj = os.path.join(self.fx.project, ".claude", "respeak", "config.yaml")
-        write(proj, "shorthand: {max_entries: 150, auto: {uses: 5}}\n")
+        write(proj, "shorthand: {register_marker: \"~\", reserved_metawords: [say again]}\n")
         errors, _ = rc.validate_file(proj, "project", self.fx.env(), PLUGIN)
         self.assertEqual(errors, [])
