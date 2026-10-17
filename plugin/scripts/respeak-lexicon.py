@@ -22,10 +22,13 @@ current directory (respeak-include.py's `git_root`), else the current
 directory.
 
 `check` holds the ratified entries, the ones the digest gives the swarm, to
-two keys: `shorthand.max_entries`, the cap on their count, and
+three keys: `shorthand.max_entries`, the cap on their count,
 `shorthand.min_token_edit_distance`, the least Levenshtein distance between
-any two of their terms, case-folded. It prints a line per problem, then
-one summary line:
+any two of their terms, case-folded, and between each term and each word of
+`shorthand.reserved_metawords`, the repair channel's words (CORRECTION,
+SAY-AGAIN, UNVERIFIED), which no term may come near. It also checks
+`shorthand.register_marker`, `required` or `optional`, which the translator
+reads. It prints a line per problem, then one summary line:
 
     lexicon: ok, 2 ratified of 150, the nearest two 6 apart (min 2)
 
@@ -45,8 +48,8 @@ never edits one that is there.
 `shorthand.auto`: it is eligible when its clean uses reach `auto.uses`
 (with `auto.readback_evidence` true, only a clean use with readback
 counts), its failure uses stay within `auto.fidelity_failures_allowed`, it
-is `min_token_edit_distance` or more from each ratified term, fewer than
-`max_entries` are ratified, and its legibility meets `legibility_floor`.
+is `min_token_edit_distance` or more from each ratified term and each
+reserved metaword, fewer than `max_entries` are ratified, and its legibility meets `legibility_floor`.
 A line an entry, `<term>: eligible` or `<term>: not eligible: ` and the
 reasons in that order, joined by `; `; then
 `ratify: P proposed, E eligible; shorthand.ratification: V`. It writes
@@ -107,6 +110,7 @@ ATTRIBUTES = b"uses.jsonl merge=union\n"
 STATUSES = ("proposed", "ratified", "retired")
 OUTCOMES = ("clean", "failure")
 METHODS = ("fresh-decoder",)
+MARKERS = ("required", "optional")
 DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 SHELL_CHARS = "`$;|&<>\"'\\"  # with whitespace: a term the skill passes to `use` never holds one
 
@@ -190,8 +194,9 @@ def fraction(value):
             and 0 <= value <= 1)
 
 
-def governance(root):
-    """The keys this script reads, each checked; a bad value is a Usage."""
+def governance(root, marker=False):
+    """The keys check and ratify read, each checked; a bad value is a Usage.
+    With marker, check's own: `register_marker`, which the translator reads."""
     sh = shorthand(root)
     gov = {}
     for key in ("max_entries", "min_token_edit_distance"):
@@ -218,6 +223,18 @@ def governance(root):
     if sh.get("ratification") not in ("human", "auto"):
         raise Usage("shorthand.ratification must be human or auto, not %r" % (sh.get("ratification"),))
     gov["ratification"] = sh["ratification"]
+    words = sh.get("reserved_metawords")
+    if not isinstance(words, list) or not all(
+            isinstance(w, str) and w and not any(c in SHELL_CHARS or c.isspace() for c in w)
+            for w in words):
+        raise Usage("shorthand.reserved_metawords must be a list of words with no whitespace "
+                    "or shell character, not %r" % (words,))
+    gov["reserved_metawords"] = words
+    if marker:
+        if sh.get("register_marker") not in MARKERS:
+            raise Usage("shorthand.register_marker must be required or optional, not %r"
+                        % (sh.get("register_marker"),))
+        gov["register_marker"] = sh["register_marker"]
     return gov
 
 
@@ -342,7 +359,7 @@ def ratified(entries):
 
 
 def check(root):
-    gov = governance(root)
+    gov = governance(root, marker=True)
     terms = ratified(lexicon(root))
     cap, least = gov["max_entries"], gov["min_token_edit_distance"]
     problems = []
@@ -355,6 +372,11 @@ def check(root):
             nearest = d if nearest is None else min(nearest, d)
             if d < least:
                 problems.append("too near: %s and %s, %d apart (min %d)" % (a, b, d, least))
+    for a in terms:
+        for w in gov["reserved_metawords"]:
+            d = distance(a, w)
+            if d < least:
+                problems.append("reserved: %s is %d from %s (min %d)" % (a, d, w, least))
     for p in problems:
         print(p)
     n = len(problems)
@@ -392,6 +414,10 @@ def ratify(root):
             d = distance(e["term"], t)
             if d < least:
                 reasons.append("%d apart from %s, min %d" % (d, t, least))
+        for w in gov["reserved_metawords"]:
+            d = distance(e["term"], w)
+            if d < least:
+                reasons.append("%d from the reserved %s, min %d" % (d, w, least))
         if len(terms) >= cap:
             reasons.append("the cap, %d ratified" % len(terms))
         leg = e.get("legibility")

@@ -1018,5 +1018,136 @@ class DefaultRoot(Case):
         self.assertRan(r, 0, SEED_LINE)
 
 
+REPAIR = ("The repair channel: `shorthand.reserved_metawords` (CORRECTION, SAY-AGAIN, UNVERIFIED by "
+          "default) is the words of `never_compress`'s `reserved-metawords` class. Each passes "
+          "verbatim, never expanded, never proposed. After CORRECTION only the corrected claim "
+          "stands: render it, not the claim it replaces. SAY-AGAIN is an open question: list it "
+          "with the open questions. UNVERIFIED marks an unverified claim: flag it as rendering "
+          "step 5 says.")
+MARKER = ("When `shorthand.register_marker` is `required`, a narrative keeping a ratified term "
+          "unexpanded ends its marker line ` · shorthand`.")
+
+
+def key_comment(key):
+    """A shipped shorthand key's line, from the key, and its continuation
+    comment lines, without their `#`, flattened."""
+    lines = read(SHIPPED).splitlines()
+    i = next(n for n, l in enumerate(lines) if l.startswith("  %s:" % key))
+    out = [lines[i].strip()]
+    for l in lines[i + 1:]:
+        if not re.match(r"^ +# ", l):
+            break
+        out.append(l.strip()[2:])
+    return flat(" ".join(out))
+
+
+def shipped_shorthand():
+    with open(SHIPPED, encoding="utf-8") as f:
+        return lex.yaml.safe_load(f)["shorthand"]
+
+
+class ReservedWords(Case):
+    """shorthand.reserved_metawords, the repair channel: check holds each
+    ratified term min_token_edit_distance from each word, ratify each
+    proposed one; both check the key."""
+
+    def test_the_seed_is_ok(self):
+        words = shipped_shorthand()["reserved_metawords"]
+        self.assertEqual(words, ["CORRECTION", "SAY-AGAIN", "UNVERIFIED"])
+        self.assertRan(self.p.run("check"), 0, SEED_LINE)
+        near = min(lex.distance(t, w) for t in ("cfg", "R1..R7", "2-lane") for w in words)
+        self.assertGreaterEqual(near, 7)
+
+    def test_m_minus_1_is_a_problem_and_m_is_not(self):
+        self.p.lexicon(entry("CORRECTIO"), entry("cfg"))
+        near = lex.distance("CORRECTIO", "cfg")
+        self.assertRan(self.p.run("check"), 1,
+                       "reserved: CORRECTIO is 1 from CORRECTION (min 2)\n"
+                       "lexicon: 1 problem, 2 ratified of 150, the nearest two %d apart (min 2)\n"
+                       % near)
+        self.p.lexicon(entry("CORRECTI"), entry("say-agai"), entry("cfg"))
+        r = self.p.run("check")
+        self.assertRan(r, 1)
+        self.assertEqual(r.stdout.splitlines()[:-1], ["reserved: say-agai is 1 from SAY-AGAIN (min 2)"],
+                         "case-folded; CORRECTI, 2 from CORRECTION, stands")
+        self.p.config("shorthand: {min_token_edit_distance: 3}\n")
+        self.assertIn("reserved: CORRECTI is 2 from CORRECTION (min 3)\n", self.p.run("check").stdout)
+
+    def test_retired_and_proposed_terms_are_not_checked(self):
+        self.p.lexicon(entry("cfg"), entry("CORRECTIO", "retired"), entry("UNVERIFIE", "proposed"))
+        self.assertRan(self.p.run("check"), 0,
+                       "lexicon: ok, 1 ratified of 150, no two to compare (min 2)\n")
+
+    def test_ratify_names_the_reserved_word_after_the_distances(self):
+        self.p.lexicon(entry("unverifi"), entry("unverifid", "proposed"))
+        self.assertRan(self.p.run("ratify"), 0,
+                       "unverifid: not eligible: 0 of 5 clean uses with readback; "
+                       "1 apart from unverifi, min 2; 1 from the reserved UNVERIFIED, min 2\n"
+                       "ratify: 1 proposed, 0 eligible; shorthand.ratification: human\n")
+
+    def test_a_project_list(self):
+        self.p.config("shorthand: {reserved_metawords: [ROGER]}\n")
+        self.p.lexicon(entry("ROGR"), entry("CORRECTIO"))
+        r = self.p.run("check")
+        self.assertRan(r, 1)
+        self.assertEqual(r.stdout.splitlines()[0], "reserved: ROGR is 1 from ROGER (min 2)")
+
+    def test_a_bad_value_exits_2_in_check_and_ratify(self):
+        for value in ("CORRECTION", "[SAY AGAIN]", "['A;B']", "['']", "[1]", "{a: 1}",
+                      "['a$b']", "[\"it's\"]"):
+            self.p.config("shorthand: {reserved_metawords: %s}\n" % value)
+            for verb in ("check", "ratify"):
+                with self.subTest(value=value, verb=verb):
+                    r = self.p.run(verb)
+                    self.assertRan(r, 2, "")
+                    self.assertIn("shorthand.reserved_metawords must be a list of words", r.stderr)
+            # due reads it not, so does not check it
+            env = dict(self.p.env, RESPEAK_TODAY="2026-10-17")
+            self.assertRan(self.p.run("due", env=env), 0)
+
+    def test_the_texts(self):
+        self.assertIn(REPAIR, flat(read(AGENT_MD)))
+        text = read(SHIPPED)
+        self.assertIn("# reserved-metawords is the list shorthand.reserved_metawords names.", text)
+        self.assertIn("{ class: reserved-metawords,", text)
+        self.assertEqual(key_comment("reserved_metawords"),
+                         "reserved_metawords: [CORRECTION, SAY-AGAIN, UNVERIFIED] # "
+                         "[respeak-lexicon.py check, ratify] the repair channel, never_compress's "
+                         "reserved-metawords: words with no whitespace or shell character; a "
+                         "ratified term nearer one than min_token_edit_distance is a problem, a "
+                         "proposed one not eligible. [instruction-only] the agent passes each "
+                         "verbatim")
+
+
+class RegisterMarker(Case):
+    """shorthand.register_marker: the translator's ` · shorthand`; check
+    holds it to required or optional."""
+
+    def test_the_shipped_value_and_both_values_pass(self):
+        self.assertEqual(shipped_shorthand()["register_marker"], "required")
+        for value in ("required", "optional"):
+            with self.subTest(value=value):
+                self.p.config("shorthand: {register_marker: %s}\n" % value)
+                self.assertRan(self.p.run("check"), 0, SEED_LINE)
+
+    def test_a_bad_value_exits_2_in_check_alone(self):
+        for value in ('"~"', "always", "true", "[required]", "Required"):
+            self.p.config("shorthand: {register_marker: %s}\n" % value)
+            with self.subTest(value=value):
+                r = self.p.run("check")
+                self.assertRan(r, 2, "")
+                self.assertIn("shorthand.register_marker must be required or optional", r.stderr)
+                # ratify reads it not
+                self.assertRan(self.p.run("ratify"), 0)
+
+    def test_the_texts(self):
+        self.assertIn(MARKER, flat(read(AGENT_MD)))
+        self.assertEqual(key_comment("register_marker"),
+                         "register_marker: required # required | optional. [instruction-only] when "
+                         "required, a narrative keeping a ratified term unexpanded ends its marker "
+                         "line ` · shorthand`; [respeak-lexicon.py check] a value outside the two "
+                         "exits 2")
+
+
 if __name__ == "__main__":
     unittest.main()

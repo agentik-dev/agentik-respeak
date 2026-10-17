@@ -1070,14 +1070,15 @@ class V043CLI(unittest.TestCase):
 class ShorthandGovernanceKeys(unittest.TestCase):
     SHIPPED = os.path.join(PLUGIN, "config", "respeak.config.yaml")
     # tagged [not built] in 66531f7: declared, and nothing read them
-    NOT_BUILT = ("register_marker", "reserved_metawords", "readback_required_for",
-                 "decompress_on")
+    NOT_BUILT = ("readback_required_for", "decompress_on")
     # the keys with behaviour: a fixed path the scripts use, the translator's prompt,
     # or respeak-lexicon.py (r16: check reads the cap and the distance, ratify those and
-    # auto; r17: due reads the three clocks)
+    # auto; r17: due reads the three clocks; r18: check and ratify the reserved
+    # metawords, check and the translator the register marker)
     KEPT = {"lexicon", "proposal_dir", "ratification", "legibility_floor", "never_compress",
             "max_entries", "min_token_edit_distance", "auto",
-            "retire_after_days_unused", "review_cadence_days", "legibility_audit"}
+            "retire_after_days_unused", "review_cadence_days", "legibility_audit",
+            "reserved_metawords", "register_marker"}
 
     def setUp(self):
         self.fx = Fixture()
@@ -1096,14 +1097,14 @@ class ShorthandGovernanceKeys(unittest.TestCase):
 
     def test_a_file_that_still_sets_one_gets_the_unknown_key_treatment(self):
         # from a user layer: shorthand.* is project-only, dropped with the warning
-        self.fx.user("shorthand: {register_marker: \"~\"}\n")
+        self.fx.user("shorthand: {decompress_on: [incident]}\n")
         res = self.fx.resolve()
         self.assertIn("%s: shorthand is project-only; ignored"
                       % os.path.join(self.fx.cfgdir, "respeak", "config.yaml"), res.warnings)
-        self.assertIsNone(rc.get_dotted(res.config, "shorthand.register_marker"))
+        self.assertIsNone(rc.get_dotted(res.config, "shorthand.decompress_on"))
         # from a project layer: merged as any unknown nested key is, and read by nothing;
         # validate refuses no old file for it
         proj = os.path.join(self.fx.project, ".claude", "respeak", "config.yaml")
-        write(proj, "shorthand: {register_marker: \"~\", reserved_metawords: [say again]}\n")
+        write(proj, "shorthand: {decompress_on: [incident], readback_required_for: [x]}\n")
         errors, _ = rc.validate_file(proj, "project", self.fx.env(), PLUGIN)
         self.assertEqual(errors, [])
