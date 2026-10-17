@@ -1,5 +1,5 @@
 """Tests for plugin/scripts/respeak-lexicon.py: the lexicon's static rules, its
-use record, and the ratification verdict.
+use record, the ratification verdict, and its clocks.
 
 The script reads R/.claude/respeak/lexicon.yaml, else the plugin's seed, and
 `shorthand` from the plugin defaults with R/.claude/respeak/config.yaml over
@@ -7,11 +7,12 @@ them, when git tracks it; no user, folder or local layer. `use` appends to
 R/.claude/respeak/uses.jsonl. Each case builds a project, a git work tree,
 under a temp HOME (CLAUDE_CONFIG_DIR inside it) and runs the script with
 --root.
-Exits: check 0 ok, 1 a problem; use 0; ratify 0 whatever the verdicts; each
-2 on a bad value, a bad lexicon or a refusal.
+Exits: check 0 ok, 1 a problem; use 0; ratify and due 0 whatever the
+verdicts; each 2 on a bad value, a bad lexicon or a refusal.
 """
 import contextlib
 import datetime
+import hashlib
 import importlib.util
 import io
 import json
@@ -85,11 +86,11 @@ class Project:
     def lexicon(self, *entries):
         return self.write(".claude/respeak/lexicon.yaml", "version: 1\nentries:\n" + "".join(entries))
 
-    def record(self, term, outcome="clean", readback=True, n=1):
+    def record(self, term, outcome="clean", readback=True, n=1, date="2026-10-16"):
         path = os.path.join(self.dir, USES_REL)
         with open(path, "a") as f:
             for _ in range(n):
-                f.write(json.dumps({"term": term, "date": "2026-10-16", "outcome": outcome,
+                f.write(json.dumps({"term": term, "date": date, "outcome": outcome,
                                     "readback": readback}) + "\n")
 
     def tree(self):
@@ -501,6 +502,193 @@ class RatifyGate(Case):
         r = self.p.run("ratify")
         self.assertRan(r, 0, SEED_RATIFY)
         self.assertIn("shorthand.auto is a mapping in a lower layer", r.stderr)
+
+
+def dated(term, ratified_by="human 2026-10-01", status="ratified", reviewed=None):
+    return ('  - term: "%s"\n    status: %s\n    legibility: 0.9\n' % (term, status)
+            + ("    ratified_by: %s\n" % ratified_by if ratified_by is not None else "")
+            + ("    reviewed: %s\n" % reviewed if reviewed is not None else ""))
+
+
+SEED_DUE = ("audit: due, never audited, every 30 days; fresh-decoder, sample: cfg, R1..R7\n"
+            "due: 0 to retire, 0 to review, the audit due\n")
+QUIET = ("audit: not due until 2099-01-31\n"
+         "due: 0 to retire, 0 to review, the audit not due until 2099-01-31\n")
+
+
+class DueClocks(Case):
+    """`due`: the retire, review and audit clocks over the ratified entries."""
+
+    def due(self, day, *args, code=0, stdout=None):
+        r = self.p.run("due", *args, env=dict(self.p.env, RESPEAK_TODAY=day))
+        self.assertRan(r, code, stdout)
+        return r
+
+    def lexicon(self, *entries, audited="2099-01-01"):
+        # an audit far ahead keeps the audit line out of the clocks under test
+        head = "version: 1\n" + ("audited: %s\n" % audited if audited else "")
+        self.p.write(".claude/respeak/lexicon.yaml", head + "entries:\n" + "".join(entries))
+
+    def test_the_seed(self):
+        before = self.p.tree()
+        self.due("2026-10-16", stdout=SEED_DUE)
+        r = self.p.run("due", wrapper=True, env=dict(self.p.env, RESPEAK_TODAY="2026-10-16"))
+        self.assertRan(r, 0, SEED_DUE)
+        self.due("2027-03-01", stdout=(
+            "retire: cfg: unused since 2026-08-31 (ratified), 182 days, after 180 days\n"
+            "review: cfg: unreviewed since 2026-08-31 (ratified), 182 days, every 90 days\n"
+            "retire: R1..R7: unused since 2026-08-31 (ratified), 182 days, after 180 days\n"
+            "review: R1..R7: unreviewed since 2026-08-31 (ratified), 182 days, every 90 days\n"
+            "audit: due, never audited, every 30 days; fresh-decoder, sample: cfg, R1..R7\n"
+            "due: 2 to retire, 2 to review, the audit due\n"))
+        self.assertEqual(self.p.tree(), before, "due writes nothing")
+
+    def test_the_keys_are_tagged_due(self):
+        with open(SHIPPED) as f:
+            lines = f.read().split("\n")
+        for key, value in (("retire_after_days_unused", " 180"), ("review_cadence_days", " 90"),
+                           ("legibility_audit", "")):
+            with self.subTest(key=key):
+                line = next(l for l in lines if l.startswith("  %s:" % key))
+                self.assertTrue(line.startswith("  %s:%s # [respeak-lexicon.py due]" % (key, value)))
+        sh = lex.shorthand(self.p.dir)
+        self.assertEqual(sh["legibility_audit"],
+                         {"cadence_days": 30, "method": "fresh-decoder", "sample": 10})
+
+    def test_retire_at_n_minus_1_and_n(self):
+        self.lexicon(dated("cfg"), dated("IU"))
+        self.p.config("shorthand: {retire_after_days_unused: 10, review_cadence_days: 900}\n")
+        # cfg: the newest clean use counts; a failure, or an older clean use, does not
+        self.p.record("cfg", date="2026-10-02")
+        self.p.record("cfg", readback=False, date="2026-10-06")
+        self.p.record("cfg", "failure", date="2026-10-12")
+        self.p.record("IV", date="2026-10-14")   # another term's use moves nothing
+        self.due("2026-10-10", stdout=QUIET)
+        self.due("2026-10-11", stdout=(
+            "retire: IU: unused since 2026-10-01 (ratified), 10 days, after 10 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 1 to retire, 0 to review, the audit not due until 2099-01-31\n"))
+        self.due("2026-10-16", stdout=(
+            "retire: cfg: unused since 2026-10-06 (clean use), 10 days, after 10 days\n"
+            "retire: IU: unused since 2026-10-01 (ratified), 15 days, after 10 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 2 to retire, 0 to review, the audit not due until 2099-01-31\n"))
+
+    def test_review_at_n_minus_1_and_n(self):
+        self.lexicon(dated("cfg", reviewed="2026-10-05"), dated("IU", reviewed='"2026-10-03"'),
+                     dated("R1..R7"))
+        self.p.config("shorthand: {retire_after_days_unused: 900, review_cadence_days: 5}\n")
+        self.due("2026-10-05", stdout=QUIET)
+        self.due("2026-10-06", stdout=(
+            "review: R1..R7: unreviewed since 2026-10-01 (ratified), 5 days, every 5 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 0 to retire, 1 to review, the audit not due until 2099-01-31\n"))
+        self.due("2026-10-10", stdout=(
+            "review: cfg: unreviewed since 2026-10-05 (reviewed), 5 days, every 5 days\n"
+            "review: IU: unreviewed since 2026-10-03 (reviewed), 7 days, every 5 days\n"
+            "review: R1..R7: unreviewed since 2026-10-01 (ratified), 9 days, every 5 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 0 to retire, 3 to review, the audit not due until 2099-01-31\n"))
+
+    def test_both_clocks_in_file_order_and_no_date(self):
+        self.lexicon(dated("old", status="retired"), dated("cfg"), dated("new", status="proposed"),
+                     dated("IU", ratified_by=None), dated("R1..R7", ratified_by="human"),
+                     dated("IV", ratified_by="2026-10-01"))
+        self.p.config("shorthand: {retire_after_days_unused: 3, review_cadence_days: 3}\n")
+        self.due("2026-10-04", stdout=(
+            "retire: cfg: unused since 2026-10-01 (ratified), 3 days, after 3 days\n"
+            "review: cfg: unreviewed since 2026-10-01 (ratified), 3 days, every 3 days\n"
+            "retire: IU: no date\n"
+            "review: IU: no date\n"
+            "retire: R1..R7: no date\n"
+            "review: R1..R7: no date\n"
+            "retire: IV: unused since 2026-10-01 (ratified), 3 days, after 3 days\n"
+            "review: IV: unreviewed since 2026-10-01 (ratified), 3 days, every 3 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 4 to retire, 4 to review, the audit not due until 2099-01-31\n"))
+        # a clean use, or a review, gives a term with no ratified date its clock
+        self.lexicon(dated("IU", ratified_by=None, reviewed="2026-10-03"))
+        self.p.record("IU", date="2026-10-02")
+        self.due("2026-10-04", stdout=QUIET)
+
+    def test_the_audit(self):
+        self.lexicon(dated("cfg"), audited="2026-10-01")
+        self.p.config("shorthand: {legibility_audit: {cadence_days: 30}}\n")
+        self.due("2026-10-30", stdout=("audit: not due until 2026-10-31\n"
+                                       "due: 0 to retire, 0 to review, the audit not due until 2026-10-31\n"))
+        self.due("2026-10-31", stdout=(
+            "audit: due, audited 2026-10-01, 30 days, every 30 days; fresh-decoder, sample: cfg\n"
+            "due: 0 to retire, 0 to review, the audit due\n"))
+        self.lexicon(dated("cfg"), audited='"2026-10-01"')
+        self.due("2026-10-30", stdout=("audit: not due until 2026-10-31\n"
+                                       "due: 0 to retire, 0 to review, the audit not due until 2026-10-31\n"))
+        self.lexicon(dated("cfg", status="proposed"), audited=None)
+        self.due("2026-10-30", stdout=("audit: due, never audited, every 30 days; fresh-decoder, sample: none\n"
+                                       "due: 0 to retire, 0 to review, the audit due\n"))
+
+    def test_the_sample(self):
+        terms = ["t%02d" % i for i in range(12)]
+        self.lexicon(dated("p", status="proposed"), *[dated(t) for t in terms], audited=None)
+
+        def sampled(day):
+            line = self.due(day).stdout.splitlines()[-2]
+            return line.split("sample: ")[1].split(", ")
+
+        def expected(day, n):
+            rank = sorted(terms, key=lambda t: hashlib.sha256(("%s %s" % (day, t)).encode()).hexdigest())
+            return [t for t in terms if t in rank[:n]]
+
+        for day in ("2026-10-02", "2026-10-03"):
+            with self.subTest(day=day):
+                got = sampled(day)
+                self.assertEqual(len(got), 10)
+                self.assertEqual(got, expected(day, 10))
+                self.assertEqual(got, sorted(got), "printed in file order")
+        self.assertNotEqual(sampled("2026-10-02"), sampled("2026-10-03"), "the day moves it")
+        self.p.config("shorthand: {legibility_audit: {sample: 3}}\n")
+        self.assertEqual(sampled("2026-10-02"), expected("2026-10-02", 3))
+        self.p.config("shorthand: {legibility_audit: {sample: 20}}\n")
+        self.assertEqual(sampled("2026-10-02"), terms)
+
+    def test_bad_values_exit_2(self):
+        for text, key in (
+                ("shorthand: {retire_after_days_unused: 0}\n", "shorthand.retire_after_days_unused"),
+                ("shorthand: {review_cadence_days: x}\n", "shorthand.review_cadence_days"),
+                ("shorthand: {review_cadence_days: true}\n", "shorthand.review_cadence_days"),
+                ("shorthand: {legibility_audit: {cadence_days: 1.5}}\n",
+                 "shorthand.legibility_audit.cadence_days"),
+                ("shorthand: {legibility_audit: {sample: 0}}\n", "shorthand.legibility_audit.sample"),
+                ("shorthand: {legibility_audit: {method: guess}}\n",
+                 "shorthand.legibility_audit.method must be fresh-decoder")):
+            with self.subTest(text=text):
+                self.p.config(text)
+                r = self.due("2026-10-16", code=2, stdout="")
+                self.assertIn(key, r.stderr)
+                self.assertEqual(len(r.stderr.splitlines()), 1)
+                # checked by due alone
+                self.assertRan(self.p.run("check"), 0, SEED_LINE)
+        os.remove(os.path.join(self.p.respeak, "config.yaml"))
+        for head, entries, why in (
+                ("", dated("cfg", reviewed="soon"), "entries[0] (cfg): reviewed must be a YYYY-MM-DD date"),
+                ("", dated("cfg", status="proposed", reviewed="5"), "reviewed must be"),
+                ("", dated("cfg", reviewed="2026-10-01T10:00:00"), "reviewed must be"),
+                ("audited: 2026/10/01\n", dated("cfg"), "audited must be a YYYY-MM-DD date"),
+                ("", dated("cfg", reviewed="2026-13-01"), "unreadable: month must be in 1..12")):
+            with self.subTest(entries=entries, head=head):
+                self.p.write(".claude/respeak/lexicon.yaml", head + "entries:\n" + entries)
+                r = self.due("2026-10-16", code=2, stdout="")
+                self.assertIn(why, r.stderr)
+        self.lexicon(dated("cfg"))
+        r = self.due("2026-10-32", code=2, stdout="")
+        self.assertIn("RESPEAK_TODAY", r.stderr)
+
+    def test_nothing_written(self):
+        self.lexicon(dated("cfg"), audited=None)
+        self.p.record("cfg", date="2026-10-02")
+        before = self.p.tree()
+        self.due("2027-10-02")
+        self.due("2026-10-16")
+        self.assertEqual(self.p.tree(), before)
 
 
 if __name__ == "__main__":

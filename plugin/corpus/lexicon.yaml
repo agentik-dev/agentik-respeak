@@ -17,11 +17,18 @@
 #   scope:       where it is valid (global | repo | session)
 #   status:      proposed | ratified | retired
 #   ratified_by: human|auto + date
+#   reviewed:    the date a person last reviewed the entry (YYYY-MM-DD);
+#                absent, the review clock runs from ratified_by's date
 #   uses:        not read; leave it at 0. A use is a line in the project's
 #                use record, .claude/respeak/uses.jsonl, which
 #                `scripts/respeak-lexicon.py use` appends
 #   legibility:  0.0-1.0 estimate of how guessable it is without the lexicon
 #                (entries below config's legibility_floor are rejected)
+#
+# Top-level `audited:` (YYYY-MM-DD, beside `version:`) is the date of the
+# last fresh-decoder audit; a person writes it, as `reviewed:`.
+# `scripts/respeak-lexicon.py due` reads both, and the clean uses, and
+# names the entries due to retire or for review and whether the audit is.
 
 version: 0
 

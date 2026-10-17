@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""respeak-lexicon: the shorthand lexicon's static rules, its use record, and
-the ratification verdict.
+"""respeak-lexicon: the shorthand lexicon's static rules, its use record, the
+ratification verdict, and its clocks.
 
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py check [--root R]
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py use TERM --outcome clean|failure \
         [--readback] [--source S] [--root R]
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py ratify [--root R]
+    "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py due [--root R]
 
 Inputs, and nothing else: R/.claude/respeak/lexicon.yaml, else the plugin's
 seed corpus/lexicon.yaml; and `shorthand` from the plugin defaults
@@ -46,12 +47,30 @@ reasons in that order, joined by `; `; then
 `ratify: P proposed, E eligible; shorthand.ratification: V`. It writes
 nothing: a person ratifies.
 
-Exit: check 0 ok, 1 a problem; use 0 recorded; ratify 0 whatever the
-verdicts; each 2 on a usage error, a bad key value, a lexicon that cannot
-be read as entries, or a refusal, with one line and no traceback.
+`due` reads three clocks over the ratified entries, by today (UTC, or
+RESPEAK_TODAY), and only it checks their keys. A clock is due when the
+whole days from its date reach its key. Retire, by
+`shorthand.retire_after_days_unused`: from the entry's newest clean use,
+else its `ratified_by` date. Review, by `shorthand.review_cadence_days`:
+from its `reviewed:` date, else `ratified_by`. A line an entry and clock
+that is due, in file order, and `<term>: no date` for one with no date to
+start from. Then the audit, by `shorthand.legibility_audit`, from the
+lexicon's top-level `audited:` date: when due, the `sample` ratified terms
+ranked by the sha256 of `<today> <term>`, printed in file order. A date is
+a YAML date or a YYYY-MM-DD string; a person writes `reviewed:` and
+`audited:`. Last, one summary line:
+
+    due: 0 to retire, 0 to review, the audit due
+
+It writes nothing.
+
+Exit: check 0 ok, 1 a problem; use 0 recorded; ratify and due 0 whatever
+the verdicts; each 2 on a usage error, a bad key value, a lexicon that
+cannot be read as entries, or a refusal, with one line and no traceback.
 """
 import argparse
 import datetime
+import hashlib
 import importlib.util
 import json
 import os
@@ -77,6 +96,7 @@ LEXICON_REL = os.path.join(".claude", "respeak", "lexicon.yaml")
 USES_REL = os.path.join(".claude", "respeak", "uses.jsonl")
 STATUSES = ("proposed", "ratified", "retired")
 OUTCOMES = ("clean", "failure")
+METHODS = ("fresh-decoder",)
 DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
 
@@ -197,11 +217,17 @@ def lexicon_path(root):
 
 def lexicon(root):
     """The entries, each a mapping with a string term and a known status."""
+    return lexicon_file(root)[0]["entries"]
+
+
+def lexicon_file(root):
+    """The lexicon's top-level mapping, its entries checked, and the name it
+    is shown by."""
     path, shown = lexicon_path(root)
     try:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
-    except (OSError, UnicodeDecodeError, yaml.YAMLError) as e:
+    except (OSError, UnicodeDecodeError, ValueError, yaml.YAMLError) as e:
         raise Usage("%s unreadable: %s" % (shown, str(e).splitlines()[0] if str(e) else e))
     entries = data.get("entries") if isinstance(data, dict) else None
     if not isinstance(entries, list):
@@ -219,7 +245,7 @@ def lexicon(root):
         if leg is not None and not fraction(leg):
             raise Usage("%s (%s): legibility must be a number from 0 to 1, not %r"
                         % (where, e["term"], leg))
-    return entries
+    return data, shown
 
 
 def is_date(text):
@@ -407,14 +433,132 @@ def use(root, term, outcome, readback, source):
 
 
 # --------------------------------------------------------------------------
+# the clocks
+# --------------------------------------------------------------------------
+
+def clocks(root):
+    """The three keys `due` reads, each checked; a bad value is a Usage.
+    check and ratify never read them."""
+    sh = shorthand(root)
+    gov = {}
+    for key in ("retire_after_days_unused", "review_cadence_days"):
+        value = sh.get(key)
+        if not whole(value) or value < 1:
+            raise Usage("shorthand.%s must be a whole number of 1 or more, not %r" % (key, value))
+        gov[key] = value
+    audit = sh.get("legibility_audit")
+    if not isinstance(audit, dict):
+        raise Usage("shorthand.legibility_audit must be a mapping, not %r" % (audit,))
+    for key in ("cadence_days", "sample"):
+        value = audit.get(key)
+        if not whole(value) or value < 1:
+            raise Usage("shorthand.legibility_audit.%s must be a whole number of 1 or more, not %r"
+                        % (key, value))
+    if audit.get("method") not in METHODS:
+        raise Usage("shorthand.legibility_audit.method must be %s, not %r"
+                    % (" or ".join(METHODS), audit.get("method")))
+    gov["legibility_audit"] = audit
+    return gov
+
+
+def as_date(value):
+    """A YAML date, or a YYYY-MM-DD string, as a date; None for anything else."""
+    if type(value) is datetime.date:
+        return value
+    return datetime.date.fromisoformat(value) if is_date(value) else None
+
+
+def ratified_on(entry):
+    """The date in `ratified_by` (`human 2026-08-31`): a YAML date, or its
+    first word that is a YYYY-MM-DD date; None without one."""
+    value = entry.get("ratified_by")
+    if as_date(value):
+        return as_date(value)
+    words = value.split() if isinstance(value, str) else []
+    return next((as_date(w) for w in words if as_date(w)), None)
+
+
+def written_date(value, where, key):
+    """A date a person writes (`reviewed:`, `audited:`): None when absent,
+    else a date; anything else is a Usage."""
+    if value is None:
+        return None
+    day = as_date(value)
+    if day is None:
+        raise Usage("%s: %s must be a YYYY-MM-DD date, not %r" % (where, key, value))
+    return day
+
+
+def pick(terms, n, day):
+    """n of the terms, ranked by the sha256 of `<day> <term>`, in file order."""
+    terms = list(dict.fromkeys(terms))
+    rank = sorted(terms, key=lambda t: hashlib.sha256(("%s %s" % (day, t)).encode("utf-8")).hexdigest())
+    chosen = set(rank[:n])
+    return [t for t in terms if t in chosen]
+
+
+def due(root):
+    gov = clocks(root)
+    data, shown = lexicon_file(root)
+    entries = data["entries"]
+    now = datetime.date.fromisoformat(today())
+    retire_n, review_n = gov["retire_after_days_unused"], gov["review_cadence_days"]
+    audit = gov["legibility_audit"]
+    newest = {}
+    for r in uses(root):
+        if r["outcome"] == "clean":
+            day = datetime.date.fromisoformat(r["date"])
+            newest[r["term"]] = max(day, newest.get(r["term"], day))
+    to_retire = to_review = 0
+    for i, e in enumerate(entries):
+        where = "%s: entries[%d] (%s)" % (shown, i, e["term"])
+        reviewed = written_date(e.get("reviewed"), where, "reviewed")
+        if e["status"] != "ratified":
+            continue
+        on = ratified_on(e)
+        for verb, n, since, kind, word in (
+                ("retire", retire_n, newest.get(e["term"]) or on,
+                 "clean use" if e["term"] in newest else "ratified", "unused"),
+                ("review", review_n, reviewed or on,
+                 "reviewed" if reviewed else "ratified", "unreviewed")):
+            if since is None:
+                print("%s: %s: no date" % (verb, e["term"]))
+            else:
+                days = (now - since).days
+                if days < n:
+                    continue
+                print("%s: %s: %s since %s (%s), %d days, %s %d days"
+                      % (verb, e["term"], word, since.isoformat(), kind, days,
+                         "after" if verb == "retire" else "every", n))
+            if verb == "retire":
+                to_retire += 1
+            else:
+                to_review += 1
+    audited = written_date(data.get("audited"), shown, "audited")
+    every = audit["cadence_days"]
+    if audited is not None and (now - audited).days < every:
+        state = "not due until %s" % (audited + datetime.timedelta(days=every)).isoformat()
+        print("audit: %s" % state)
+    else:
+        state = "due"
+        last = ("never audited" if audited is None
+                else "audited %s, %d days" % (audited.isoformat(), (now - audited).days))
+        sample = pick(ratified(entries), audit["sample"], now.isoformat())
+        print("audit: due, %s, every %d days; %s, sample: %s"
+              % (last, every, audit["method"], ", ".join(sample) or "none"))
+    print("due: %d to retire, %d to review, the audit %s" % (to_retire, to_review, state))
+    return 0
+
+
+# --------------------------------------------------------------------------
 # main
 # --------------------------------------------------------------------------
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="respeak-lexicon.py",
                                 description="The shorthand lexicon's static rules, its use "
-                                            "record, and the ratification verdict.")
-    sub = p.add_subparsers(dest="verb", required=True, metavar="{check,use,ratify}")
+                                            "record, the ratification verdict, and its clocks.")
+    sub = p.add_subparsers(dest="verb", required=True, metavar="{check,use,ratify,due}")
     s = sub.add_parser("check", help="hold the ratified entries to the cap and the edit distance")
     u = sub.add_parser("use", help="append one use of a term to .claude/respeak/uses.jsonl")
     u.add_argument("term", metavar="TERM")
@@ -422,7 +566,8 @@ def main(argv=None):
     u.add_argument("--readback", action="store_true", help="the reader read the term back")
     u.add_argument("--source", metavar="S", help="where the use was seen")
     v = sub.add_parser("ratify", help="judge each proposed entry by shorthand.auto; write nothing")
-    for x in (s, u, v):
+    d = sub.add_parser("due", help="the retire, review and audit clocks that are due; write nothing")
+    for x in (s, u, v, d):
         x.add_argument("--root", metavar="R", default=".",
                        help="the project directory (default: the current one)")
     args = p.parse_args(argv)
@@ -434,6 +579,8 @@ def main(argv=None):
             return use(root, args.term, args.outcome, args.readback, args.source)
         if args.verb == "ratify":
             return ratify(root)
+        if args.verb == "due":
+            return due(root)
         return check(root)
     except Usage as e:
         warn(str(e))
