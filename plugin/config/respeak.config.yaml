@@ -287,9 +287,8 @@ shorthand: # project-only: governance never varies by folder or by user
   #   [fixed path]       the scripts and the agent use a fixed path; this key is not read
   #   [respeak-lexicon.py VERB] scripts/respeak-lexicon.py reads it in that verb
   # The governance keys nothing read are not shipped (a knob with no behaviour
-  # is removed): expiry, the review and audit cadences, the register marker,
-  # reserved metawords, readback and decompress triggers. NICE_TO_HAVE.md
-  # holds the plan. A file that still sets one gets what any unknown key
+  # is removed): the register marker, reserved metawords, readback and
+  # decompress triggers. NICE_TO_HAVE.md holds the plan. A file that still sets one gets what any unknown key
   # gets: dropped as project-only from a user or folder layer, merged and
   # unread from a project layer.
   lexicon: corpus/lexicon.yaml # [fixed path] .claude/respeak/lexicon.yaml, else this seed
@@ -304,6 +303,12 @@ shorthand: # project-only: governance never varies by folder or by user
     uses: 5                       # clean uses in .claude/respeak/uses.jsonl
     fidelity_failures_allowed: 0  # failure uses it may have
     readback_evidence: true       # true: only a clean use recorded with readback counts
+  retire_after_days_unused: 180 # [respeak-lexicon.py due] a ratified entry with no clean use this long is due to retire
+  review_cadence_days: 90 # [respeak-lexicon.py due] a ratified entry unreviewed this long is due for review
+  legibility_audit: # [respeak-lexicon.py due] the lexicon's `audited:` date this old, the audit is due
+    cadence_days: 30       # days between audits
+    method: fresh-decoder  # the only method: a fresh agent decodes the sample unaided
+    sample: 10             # ratified terms put to it, chosen by the day
   # never_compress: [instruction-only] the agent keeps each class verbatim;
   # respeak-verify-edit.py also holds numbers across an editorial pass.
   never_compress: # TJC do-not-use format: each ban carries its failure story

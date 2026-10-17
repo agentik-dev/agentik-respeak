@@ -1,5 +1,7 @@
 """Tests for plugin/scripts/respeak-lexicon.py: the lexicon's static rules, its
-use record, and the ratification verdict.
+use record, the ratification verdict, and its clocks; and the writer's
+wiring, the translator's `uses:` line and the skill's step 6 that records it;
+and the seams, the record's union merge and `--root`'s default, the git top.
 
 The script reads R/.claude/respeak/lexicon.yaml, else the plugin's seed, and
 `shorthand` from the plugin defaults with R/.claude/respeak/config.yaml over
@@ -7,15 +9,19 @@ them, when git tracks it; no user, folder or local layer. `use` appends to
 R/.claude/respeak/uses.jsonl. Each case builds a project, a git work tree,
 under a temp HOME (CLAUDE_CONFIG_DIR inside it) and runs the script with
 --root.
-Exits: check 0 ok, 1 a problem; use 0; ratify 0 whatever the verdicts; each
-2 on a bad value, a bad lexicon or a refusal.
+Exits: check 0 ok, 1 a problem; use 0; ratify and due 0 whatever the
+verdicts; each 2 on a bad value, a bad lexicon or a refusal.
 """
 import contextlib
 import datetime
+import fnmatch
+import hashlib
 import importlib.util
 import io
 import json
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -30,6 +36,7 @@ PY_WRAPPER = os.path.join(PLUGIN, "scripts", "py")
 SHIPPED = os.path.join(PLUGIN, "config", "respeak.config.yaml")
 SEED_LINE = "lexicon: ok, 2 ratified of 150, the nearest two 6 apart (min 2)\n"
 USES_REL = os.path.join(".claude", "respeak", "uses.jsonl")
+LEXICON_REL = os.path.join(".claude", "respeak", "lexicon.yaml")
 
 _spec = importlib.util.spec_from_file_location("respeak_lexicon", SCRIPT)
 assert _spec is not None and _spec.loader is not None
@@ -85,11 +92,11 @@ class Project:
     def lexicon(self, *entries):
         return self.write(".claude/respeak/lexicon.yaml", "version: 1\nentries:\n" + "".join(entries))
 
-    def record(self, term, outcome="clean", readback=True, n=1):
+    def record(self, term, outcome="clean", readback=True, n=1, date="2026-10-16"):
         path = os.path.join(self.dir, USES_REL)
         with open(path, "a") as f:
             for _ in range(n):
-                f.write(json.dumps({"term": term, "date": "2026-10-16", "outcome": outcome,
+                f.write(json.dumps({"term": term, "date": date, "outcome": outcome,
                                     "readback": readback}) + "\n")
 
     def tree(self):
@@ -272,6 +279,42 @@ class LexiconCheck(Case):
         r = subprocess.run([sys.executable, SCRIPT, "check", "--root", os.path.join(self.p.root, "no")],
                            env=self.p.env, capture_output=True, text=True, timeout=60)
         self.assertRan(r, 2, "")
+
+    def test_a_term_with_a_shell_character_is_refused(self):
+        # r17 fix round 1, F3: the skill's step 6 puts a term on a command line
+        env = dict(self.p.env, RESPEAK_TODAY="2026-10-16")
+        for term in ("$HOME", "a`b", "x;y", "a|b", "a&b", "a<b", "a>b", 'a\\"b', "it's", "a\\\\b",
+                     "x y", "a\\tb", "a\\nb"):
+            self.p.write(".claude/respeak/lexicon.yaml",
+                         'entries:\n  - {term: "cfg", status: ratified}\n'
+                         '  - {term: "%s", status: proposed}\n' % term)
+            for argv in (["check"], ["ratify"], ["due"], ["use", "cfg", "--outcome", "clean"]):
+                with self.subTest(term=term, verb=argv[0]):
+                    r = self.p.run(*argv, env=env)
+                    self.assertRan(r, 2, "")
+                    self.assertIn("entries[1]", r.stderr)
+                    self.assertIn("a term holds a shell character", r.stderr)
+                    self.assertEqual(len(r.stderr.splitlines()), 1)
+        self.assertFalse(os.path.lexists(os.path.join(self.p.dir, USES_REL)))
+        # the seed's terms, and the shapes the tests use, stay valid
+        self.p.lexicon(entry("cfg"), entry("R1..R7"), entry("2-lane", "proposed"), entry("IU"))
+        self.assertRan(self.p.run("check"), 0)
+
+    def test_no_verb_writes_bytecode(self):
+        # r17 fix round 1, F4: the modules the script loads leave no __pycache__
+        copy = os.path.join(self.p.root, "plugin")
+        shutil.copytree(PLUGIN, copy, ignore=shutil.ignore_patterns("__pycache__"))
+        env = dict(self.p.env, RESPEAK_TODAY="2026-10-16")
+        for k in ("PYTHONDONTWRITEBYTECODE", "PYTHONPYCACHEPREFIX"):
+            env.pop(k, None)
+        script = os.path.join(copy, "scripts", "respeak-lexicon.py")
+        for argv in (["check"], ["ratify"], ["due"], ["use", "cfg", "--outcome", "clean"]):
+            with self.subTest(verb=argv[0]):
+                r = subprocess.run([sys.executable, script, *argv, "--root", self.p.dir], env=env,
+                                   capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
+                self.assertRan(r, 0)
+                caches = [d for d, _, _ in os.walk(copy) if os.path.basename(d) == "__pycache__"]
+                self.assertEqual(caches, [])
 
 
 
@@ -501,6 +544,478 @@ class RatifyGate(Case):
         r = self.p.run("ratify")
         self.assertRan(r, 0, SEED_RATIFY)
         self.assertIn("shorthand.auto is a mapping in a lower layer", r.stderr)
+
+
+def dated(term, ratified_by="human 2026-10-01", status="ratified", reviewed=None):
+    return ('  - term: "%s"\n    status: %s\n    legibility: 0.9\n' % (term, status)
+            + ("    ratified_by: %s\n" % ratified_by if ratified_by is not None else "")
+            + ("    reviewed: %s\n" % reviewed if reviewed is not None else ""))
+
+
+SEED_DUE = ("audit: due, never audited, every 30 days; fresh-decoder, sample: cfg, R1..R7\n"
+            "due: 0 to retire, 0 to review, the audit due\n")
+QUIET = ("audit: not due until 2099-01-31\n"
+         "due: 0 to retire, 0 to review, the audit not due until 2099-01-31\n")
+
+
+class DueClocks(Case):
+    """`due`: the retire, review and audit clocks over the ratified entries."""
+
+    def due(self, day, *args, code=0, stdout=None):
+        r = self.p.run("due", *args, env=dict(self.p.env, RESPEAK_TODAY=day))
+        self.assertRan(r, code, stdout)
+        return r
+
+    def lexicon(self, *entries, audited="2099-01-01"):
+        # an audit far ahead keeps the audit line out of the clocks under test
+        head = "version: 1\n" + ("audited: %s\n" % audited if audited else "")
+        self.p.write(".claude/respeak/lexicon.yaml", head + "entries:\n" + "".join(entries))
+
+    def test_the_seed(self):
+        before = self.p.tree()
+        self.due("2026-10-16", stdout=SEED_DUE)
+        r = self.p.run("due", wrapper=True, env=dict(self.p.env, RESPEAK_TODAY="2026-10-16"))
+        self.assertRan(r, 0, SEED_DUE)
+        self.due("2027-03-01", stdout=(
+            "retire: cfg: unused since 2026-08-31 (ratified), 182 days, after 180 days\n"
+            "review: cfg: unreviewed since 2026-08-31 (ratified), 182 days, every 90 days\n"
+            "retire: R1..R7: unused since 2026-08-31 (ratified), 182 days, after 180 days\n"
+            "review: R1..R7: unreviewed since 2026-08-31 (ratified), 182 days, every 90 days\n"
+            "audit: due, never audited, every 30 days; fresh-decoder, sample: cfg, R1..R7\n"
+            "due: 2 to retire, 2 to review, the audit due\n"))
+        self.assertEqual(self.p.tree(), before, "due writes nothing")
+
+    def test_the_keys_are_tagged_due(self):
+        with open(SHIPPED) as f:
+            lines = f.read().split("\n")
+        for key, value in (("retire_after_days_unused", " 180"), ("review_cadence_days", " 90"),
+                           ("legibility_audit", "")):
+            with self.subTest(key=key):
+                line = next(l for l in lines if l.startswith("  %s:" % key))
+                self.assertTrue(line.startswith("  %s:%s # [respeak-lexicon.py due]" % (key, value)))
+        sh = lex.shorthand(self.p.dir)
+        self.assertEqual(sh["legibility_audit"],
+                         {"cadence_days": 30, "method": "fresh-decoder", "sample": 10})
+
+    def test_retire_at_n_minus_1_and_n(self):
+        self.lexicon(dated("cfg"), dated("IU"))
+        self.p.config("shorthand: {retire_after_days_unused: 10, review_cadence_days: 900}\n")
+        # cfg: the newest clean use counts; a failure, or an older clean use, does not
+        self.p.record("cfg", date="2026-10-02")
+        self.p.record("cfg", readback=False, date="2026-10-06")
+        self.p.record("cfg", "failure", date="2026-10-12")
+        self.p.record("IV", date="2026-10-14")   # another term's use moves nothing
+        self.due("2026-10-10", stdout=QUIET)
+        self.due("2026-10-11", stdout=(
+            "retire: IU: unused since 2026-10-01 (ratified), 10 days, after 10 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 1 to retire, 0 to review, the audit not due until 2099-01-31\n"))
+        self.due("2026-10-16", stdout=(
+            "retire: cfg: unused since 2026-10-06 (clean use), 10 days, after 10 days\n"
+            "retire: IU: unused since 2026-10-01 (ratified), 15 days, after 10 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 2 to retire, 0 to review, the audit not due until 2099-01-31\n"))
+
+    def test_review_at_n_minus_1_and_n(self):
+        self.lexicon(dated("cfg", reviewed="2026-10-05"), dated("IU", reviewed='"2026-10-03"'),
+                     dated("R1..R7"))
+        self.p.config("shorthand: {retire_after_days_unused: 900, review_cadence_days: 5}\n")
+        self.due("2026-10-05", stdout=QUIET)
+        self.due("2026-10-06", stdout=(
+            "review: R1..R7: unreviewed since 2026-10-01 (ratified), 5 days, every 5 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 0 to retire, 1 to review, the audit not due until 2099-01-31\n"))
+        self.due("2026-10-10", stdout=(
+            "review: cfg: unreviewed since 2026-10-05 (reviewed), 5 days, every 5 days\n"
+            "review: IU: unreviewed since 2026-10-03 (reviewed), 7 days, every 5 days\n"
+            "review: R1..R7: unreviewed since 2026-10-01 (ratified), 9 days, every 5 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 0 to retire, 3 to review, the audit not due until 2099-01-31\n"))
+
+    def test_both_clocks_in_file_order_and_no_date(self):
+        self.lexicon(dated("old", status="retired"), dated("cfg"), dated("new", status="proposed"),
+                     dated("IU", ratified_by=None), dated("R1..R7", ratified_by="human"),
+                     dated("IV", ratified_by="2026-10-01"))
+        self.p.config("shorthand: {retire_after_days_unused: 3, review_cadence_days: 3}\n")
+        self.due("2026-10-04", stdout=(
+            "retire: cfg: unused since 2026-10-01 (ratified), 3 days, after 3 days\n"
+            "review: cfg: unreviewed since 2026-10-01 (ratified), 3 days, every 3 days\n"
+            "retire: IU: no date\n"
+            "review: IU: no date\n"
+            "retire: R1..R7: no date\n"
+            "review: R1..R7: no date\n"
+            "retire: IV: unused since 2026-10-01 (ratified), 3 days, after 3 days\n"
+            "review: IV: unreviewed since 2026-10-01 (ratified), 3 days, every 3 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 4 to retire, 4 to review, the audit not due until 2099-01-31\n"))
+        # a clean use, or a review, gives a term with no ratified date its clock
+        self.lexicon(dated("IU", ratified_by=None, reviewed="2026-10-03"))
+        self.p.record("IU", date="2026-10-02")
+        self.due("2026-10-04", stdout=QUIET)
+
+    def test_the_audit(self):
+        self.lexicon(dated("cfg"), audited="2026-10-01")
+        self.p.config("shorthand: {legibility_audit: {cadence_days: 30}}\n")
+        self.due("2026-10-30", stdout=("audit: not due until 2026-10-31\n"
+                                       "due: 0 to retire, 0 to review, the audit not due until 2026-10-31\n"))
+        self.due("2026-10-31", stdout=(
+            "audit: due, audited 2026-10-01, 30 days, every 30 days; fresh-decoder, sample: cfg\n"
+            "due: 0 to retire, 0 to review, the audit due\n"))
+        self.lexicon(dated("cfg"), audited='"2026-10-01"')
+        self.due("2026-10-30", stdout=("audit: not due until 2026-10-31\n"
+                                       "due: 0 to retire, 0 to review, the audit not due until 2026-10-31\n"))
+        self.lexicon(dated("cfg", status="proposed"), audited=None)
+        self.due("2026-10-30", stdout=("audit: due, never audited, every 30 days; fresh-decoder, sample: none\n"
+                                       "due: 0 to retire, 0 to review, the audit due\n"))
+
+    def test_the_sample(self):
+        terms = ["t%02d" % i for i in range(12)]
+        self.lexicon(dated("p", status="proposed"), *[dated(t) for t in terms], audited=None)
+
+        def sampled(day):
+            line = self.due(day).stdout.splitlines()[-2]
+            return line.split("sample: ")[1].split(", ")
+
+        def expected(day, n):
+            rank = sorted(terms, key=lambda t: hashlib.sha256(("%s %s" % (day, t)).encode()).hexdigest())
+            return [t for t in terms if t in rank[:n]]
+
+        for day in ("2026-10-02", "2026-10-03"):
+            with self.subTest(day=day):
+                got = sampled(day)
+                self.assertEqual(len(got), 10)
+                self.assertEqual(got, expected(day, 10))
+                self.assertEqual(got, sorted(got), "printed in file order")
+        self.assertNotEqual(sampled("2026-10-02"), sampled("2026-10-03"), "the day moves it")
+        self.p.config("shorthand: {legibility_audit: {sample: 3}}\n")
+        self.assertEqual(sampled("2026-10-02"), expected("2026-10-02", 3))
+        self.p.config("shorthand: {legibility_audit: {sample: 20}}\n")
+        self.assertEqual(sampled("2026-10-02"), terms)
+
+    def test_bad_values_exit_2(self):
+        for text, key in (
+                ("shorthand: {retire_after_days_unused: 0}\n", "shorthand.retire_after_days_unused"),
+                ("shorthand: {review_cadence_days: x}\n", "shorthand.review_cadence_days"),
+                ("shorthand: {review_cadence_days: true}\n", "shorthand.review_cadence_days"),
+                ("shorthand: {legibility_audit: {cadence_days: 1.5}}\n",
+                 "shorthand.legibility_audit.cadence_days"),
+                ("shorthand: {legibility_audit: {sample: 0}}\n", "shorthand.legibility_audit.sample"),
+                ("shorthand: {legibility_audit: {method: guess}}\n",
+                 "shorthand.legibility_audit.method must be fresh-decoder")):
+            with self.subTest(text=text):
+                self.p.config(text)
+                r = self.due("2026-10-16", code=2, stdout="")
+                self.assertIn(key, r.stderr)
+                self.assertEqual(len(r.stderr.splitlines()), 1)
+                # checked by due alone
+                self.assertRan(self.p.run("check"), 0, SEED_LINE)
+        os.remove(os.path.join(self.p.respeak, "config.yaml"))
+        for head, entries, why in (
+                ("", dated("cfg", reviewed="soon"), "entries[0] (cfg): reviewed must be a YYYY-MM-DD date"),
+                ("", dated("cfg", status="proposed", reviewed="5"), "reviewed must be"),
+                ("", dated("cfg", reviewed="2026-10-01T10:00:00"), "reviewed must be"),
+                # an entry due ahead of the bad value: nothing printed before the refusal
+                ("audited: 2026/10/01\n", dated("cfg", ratified_by="human 2020-01-01"),
+                 "audited must be a YYYY-MM-DD date"),
+                ("", dated("cfg", ratified_by="human 2020-01-01") + dated("IU", reviewed="soon"),
+                 "entries[1] (IU): reviewed must be"),
+                ("", dated("cfg", reviewed="2026-13-01"), "unreadable: month must be in 1..12")):
+            with self.subTest(entries=entries, head=head):
+                self.p.write(".claude/respeak/lexicon.yaml", head + "entries:\n" + entries)
+                r = self.due("2026-10-16", code=2, stdout="")
+                self.assertIn(why, r.stderr)
+        self.lexicon(dated("cfg"))
+        r = self.due("2026-10-32", code=2, stdout="")
+        self.assertIn("RESPEAK_TODAY", r.stderr)
+
+    def test_a_date_past_9999_exits_2(self):
+        # r17 fix round 1, F1: the next audit date past date.max is a refusal, not a traceback
+        for audited, cadence in (("9999-12-31", 30), ("2026-10-01", 3000000),
+                                 ("2026-10-01", 999999999)):
+            with self.subTest(audited=audited, cadence=cadence):
+                self.lexicon(dated("cfg"), audited=audited)
+                self.p.config("shorthand: {legibility_audit: {cadence_days: %d}}\n" % cadence)
+                r = self.due("2026-10-16", code=2, stdout="")
+                self.assertEqual(r.stderr.splitlines(), [
+                    "respeak-lexicon: %s: audited %s plus shorthand.legibility_audit.cadence_days "
+                    "%d is past 9999-12-31" % (LEXICON_REL, audited, cadence)])
+        self.p.config("shorthand: {legibility_audit: {cadence_days: 30}}\n")
+        self.lexicon(dated("cfg"), audited="9999-11-30")
+        self.due("2026-10-16", stdout=("audit: not due until 9999-12-30\n"
+                                       "due: 0 to retire, 0 to review, the audit not due until 9999-12-30\n"))
+
+    def test_a_clean_use_before_ratification_does_not_restart_the_clock(self):
+        # r17 fix round 1, F2: the later of the newest clean use and the ratified date
+        self.lexicon(dated("nw", ratified_by="human 2026-10-15"))
+        self.p.config("shorthand: {retire_after_days_unused: 10, review_cadence_days: 900}\n")
+        self.p.record("nw", date="2026-01-02")
+        self.due("2026-10-24", stdout=QUIET)
+        self.due("2026-10-25", stdout=(
+            "retire: nw: unused since 2026-10-15 (ratified), 10 days, after 10 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 1 to retire, 0 to review, the audit not due until 2099-01-31\n"))
+        self.p.record("nw", date="2026-10-15")   # a use on the day it is ratified is a use
+        self.due("2026-10-25", stdout=(
+            "retire: nw: unused since 2026-10-15 (clean use), 10 days, after 10 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 1 to retire, 0 to review, the audit not due until 2099-01-31\n"))
+        self.p.record("nw", date="2026-10-20")
+        self.due("2026-10-29", stdout=QUIET)
+        self.due("2026-10-30", stdout=(
+            "retire: nw: unused since 2026-10-20 (clean use), 10 days, after 10 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 1 to retire, 0 to review, the audit not due until 2099-01-31\n"))
+
+    def test_nothing_written(self):
+        self.lexicon(dated("cfg"), audited=None)
+        self.p.record("cfg", date="2026-10-02")
+        before = self.p.tree()
+        self.due("2027-10-02")
+        self.due("2026-10-16")
+        self.assertEqual(self.p.tree(), before)
+
+
+AGENT_MD = os.path.join(PLUGIN, "agents", "respeak.md")
+SKILL_MD = os.path.join(PLUGIN, "skills", "respeak", "SKILL.md")
+RENDER = os.path.join(PLUGIN, "scripts", "respeak-render.sh")
+USE_CALL = ('"${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py use \'<term>\' '
+            '--outcome <outcome> [--readback] --source "<source>" --root "${CLAUDE_PROJECT_DIR}"')
+USES_ITEM = re.compile(r"`([^`]+)` (clean|failure)( readback)?")
+
+
+def parse_uses(line):
+    """The translator's `uses:` line as (term, outcome, readback) items, as
+    the skill's step 6 reads it; None for a line out of the shape."""
+    if not line.startswith("uses: "):
+        return None
+    body = line[len("uses: "):]
+    if body == "none":
+        return []
+    items = []
+    for part in body.split("; "):
+        m = USES_ITEM.fullmatch(part)
+        if not m:
+            return None
+        items.append((m.group(1), m.group(2), bool(m.group(3))))
+    return items
+
+
+def flat(text):
+    return " ".join(text.split())
+
+
+def read(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+class UseWiring(Case):
+    """The writer: the translator names the uses when asked, the skill
+    records them through `use`, and the render never asks."""
+
+    def test_the_agent_text(self):
+        text = read(AGENT_MD)
+        self.assertIn("tools: Read, Grep, Glob, Write", text.split("\n---\n")[0].splitlines(),
+                      "the translator gets no Bash")
+        self.assertIn("When the caller asks for uses, one more final line, the last: `uses: ` "
+                      "then each lexicon term the source used, `` `<term>` clean `` or "
+                      "`` `<term>` failure `` (used true to its definition, or not), plus "
+                      "` readback` when its receiver used it back, joined by `; `; with none, "
+                      "`uses: none`. The caller records them; you run nothing.", flat(text))
+
+    def test_the_skill_text(self):
+        text = read(SKILL_MD)
+        body = flat(text.split("\n---\n", 1)[1])
+        self.assertEqual(re.findall(r"(?m)^(\d+)\. ", text), [str(n) for n in range(1, 8)])
+        ask = "ask it for its `uses:` line"
+        drop = ("First drop each reply's last line when it reads `uses: …`: step 6 records it; "
+                "it is neither scanned nor relayed.")
+        record = ("6. Record the uses, once, from the agent's first `uses:` line; "
+                  "`uses: none` records nothing.")
+        skip = ("A refusal naming `no .claude/respeak/` means the project keeps no use record: "
+                "skip the rest silently. Name any other refusal in one line after the narrative.")
+        for phrase in (ask, drop, record, USE_CALL, skip):
+            self.assertIn(phrase, body)
+        order = [body.index(p) for p in ("4. Delegate", ask, "5. Verify", drop, "respeak-measure.py",
+                                         record, USE_CALL, skip, "7. If the agent reports")]
+        self.assertEqual(order, sorted(order))
+
+    def test_the_grant_admits_the_call(self):
+        text = read(SKILL_MD)
+        front = text.split("\n---\n", 1)[0]
+        rules = re.findall(r"Bash\(([^)]*)\)", re.search(r"(?m)^allowed-tools: (.*)$", front).group(1))
+        lines = [l.strip().strip("`") for l in text.splitlines()]
+        call = next(l for l in lines if "respeak-lexicon.py use" in l)
+        self.assertEqual(call, USE_CALL)
+        measure = next(l for l in lines if l.startswith('"') and "respeak-measure.py" in l)
+        for each in (call, measure):
+            with self.subTest(call=each[:40]):
+                # the plugin root substituted as Claude Code does on load, the shell's words
+                argv = shlex.split(each.replace("[--readback]", "--readback").split(" <<")[0])
+                command = " ".join(argv).replace("${CLAUDE_PLUGIN_ROOT}", "/p")
+                self.assertTrue(any(fnmatch.fnmatchcase(command, r.replace("${CLAUDE_PLUGIN_ROOT}", "/p"))
+                                    for r in rules), (command, rules))
+        self.assertEqual(call.split(" ")[0], measure.split(" ")[0], "step 5's grant, step 6's call")
+
+    def test_the_render_never_asks(self):
+        self.assertIsNone(re.search(r"\buses\b", read(RENDER)))
+
+    def test_a_line_in_the_shape_gives_its_records(self):
+        self.p.lexicon(entry("cfg"), entry("R1..R7"), entry("2-lane", "proposed", 0.6))
+        reply = ("\U0001f4e3 respeak · bluf\n\nThe narrative.\nlexicon: 0 proposals written\n"
+                 "uses: `cfg` clean readback; `2-lane` failure; `R1..R7` clean")
+        *narrative, last = reply.splitlines()
+        self.assertNotIn("uses:", "\n".join(narrative), "the narrative scanned and relayed")
+        items = parse_uses(last)
+        self.assertEqual(items, [("cfg", "clean", True), ("2-lane", "failure", False),
+                                 ("R1..R7", "clean", False)])
+        env = dict(self.p.env, RESPEAK_TODAY="2026-10-16")
+        for term, outcome, readback in items:
+            argv = (["use", term, "--outcome", outcome] + (["--readback"] if readback else [])
+                    + ["--source", "session s1"])
+            self.assertRan(self.p.run(*argv, env=env, wrapper=True), 0)
+        rec = {"date": "2026-10-16", "source": "session s1"}
+        self.assertEqual(lex.uses(self.p.dir), [
+            dict(rec, term="cfg", outcome="clean", readback=True),
+            dict(rec, term="2-lane", outcome="failure", readback=False),
+            dict(rec, term="R1..R7", outcome="clean", readback=False)])
+        self.assertRan(self.p.run("ratify"), 0,
+                       "2-lane: not eligible: 0 of 5 clean uses with readback; "
+                       "1 fidelity failure, 0 allowed\n"
+                       "ratify: 1 proposed, 0 eligible; shorthand.ratification: human\n")
+        # none records nothing; a line out of the shape is not read
+        self.assertEqual(parse_uses("uses: none"), [])
+        for bad in ("uses: cfg clean", "uses: `cfg` fine", "uses: `cfg` clean, `R1..R7` clean",
+                    "lexicon: 0 proposals written", "uses: `a`b` clean", "uses: `x; y` clean",
+                    "uses: `cfg` clean; `x; y` failure"):
+            self.assertIsNone(parse_uses(bad), bad)
+        # the refusal the skill skips on is the one `use` gives
+        shutil.rmtree(self.p.respeak)
+        r = self.p.run("use", "cfg", "--outcome", "clean", env=env, wrapper=True)
+        self.assertRan(r, 2, "")
+        self.assertIn("no .claude/respeak/", r.stderr)
+
+
+ATTRIBUTES_REL = os.path.join(".claude", "respeak", ".gitattributes")
+
+
+class UnionMerge(Case):
+    """`use`, creating uses.jsonl, writes .claude/respeak/.gitattributes
+    (`uses.jsonl merge=union`) when there is none: two branches that each
+    append merge with both lines."""
+
+    def setUp(self):
+        super().setUp()
+        self.env = dict(self.p.env, RESPEAK_TODAY="2026-10-16", GIT_AUTHOR_NAME="t",
+                        GIT_AUTHOR_EMAIL="t@example.invalid", GIT_COMMITTER_NAME="t",
+                        GIT_COMMITTER_EMAIL="t@example.invalid")
+
+    def git(self, *args):
+        return subprocess.run(["git", *args], cwd=self.p.dir, env=self.env, capture_output=True,
+                              text=True, stdin=subprocess.DEVNULL, timeout=60)
+
+    def commit(self, message):
+        self.assertEqual(self.git("add", "-A", ".claude").returncode, 0)
+        r = self.git("commit", "-q", "-m", message)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def use(self, term, source):
+        self.assertRan(self.p.run("use", term, "--outcome", "clean", "--source", source,
+                                  env=self.env), 0)
+
+    def branches(self, base, left, right):
+        """left and right, each off base with one use appended; then left merges right."""
+        for name, term in ((left, "cfg"), (right, "R1..R7")):
+            self.assertEqual(self.git("checkout", "-q", "-b", name, base).returncode, 0)
+            self.use(term, name)
+            self.commit(name)
+        self.assertEqual(self.git("checkout", "-q", left).returncode, 0)
+        return self.git("merge", "-q", "--no-edit", right)
+
+    def test_two_branches_merge_with_both_lines(self):
+        self.use("cfg", "main")
+        with open(os.path.join(self.p.dir, ATTRIBUTES_REL), "rb") as f:
+            self.assertEqual(f.read(), b"uses.jsonl merge=union\n")
+        self.commit("first use")
+        self.assertEqual(self.git("branch", "-M", "main").returncode, 0)
+        r = self.branches("main", "left", "right")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual([u["source"] for u in lex.uses(self.p.dir)], ["main", "left", "right"])
+        # the control: without the attribute the same appends conflict
+        self.assertEqual(self.git("checkout", "-q", "-b", "plain", "main").returncode, 0)
+        self.assertEqual(self.git("rm", "-q", ATTRIBUTES_REL).returncode, 0)
+        self.commit("no attributes")
+        r = self.branches("plain", "left2", "right2")
+        self.assertNotEqual(r.returncode, 0, "without merge=union the appends conflict")
+        self.git("merge", "--abort")
+
+    def test_one_that_is_there_is_never_edited(self):
+        attributes = os.path.join(self.p.dir, ATTRIBUTES_REL)
+        self.p.write(ATTRIBUTES_REL, "*.jsonl -diff\n")
+        self.use("cfg", "s")
+        with open(attributes) as f:
+            self.assertEqual(f.read(), "*.jsonl -diff\n")
+        # a symlink is not followed
+        os.remove(attributes)
+        os.remove(os.path.join(self.p.dir, USES_REL))
+        target = self.p.write("elsewhere", "")
+        os.symlink(target, attributes)
+        self.use("cfg", "s")
+        with open(target) as f:
+            self.assertEqual(f.read(), "")
+        # written only when use creates the record: a removed one stays removed
+        os.remove(attributes)
+        self.use("cfg", "s")
+        self.assertFalse(os.path.lexists(attributes))
+
+    def test_a_refusal_writes_neither(self):
+        r = self.p.run("use", "nope", "--outcome", "clean", env=self.env)
+        self.assertRan(r, 2, "")
+        self.assertEqual(os.listdir(self.p.respeak), [])
+
+
+class DefaultRoot(Case):
+    """With --root absent: the top of the git work tree holding the current
+    directory, else the current directory; in every verb."""
+
+    def bare(self, cwd, *args, env=None):
+        return subprocess.run([sys.executable, SCRIPT, *args], cwd=cwd, env=env or self.p.env,
+                              capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
+
+    def test_a_subdirectory_reads_the_project(self):
+        self.p.config("shorthand: {max_entries: 2}\n")
+        sub = os.path.join(self.p.dir, "docs", "deep")
+        os.makedirs(sub)
+        self.assertRan(self.bare(sub, "check"), 0,
+                       "lexicon: ok, 2 ratified of 2, the nearest two 6 apart (min 2)\n")
+        self.p.lexicon(entry("cfg"), entry("IU", "proposed"))
+        env = dict(self.p.env, RESPEAK_TODAY="2026-10-16")
+        r = self.bare(sub, "use", "IU", "--outcome", "clean", env=env)
+        self.assertRan(r, 0)
+        self.assertEqual([u["term"] for u in lex.uses(self.p.dir)], ["IU"])
+        self.assertFalse(os.path.lexists(os.path.join(sub, ".claude")))
+        self.assertRan(self.bare(sub, "ratify"), 0,
+                       "IU: not eligible: 0 of 5 clean uses with readback\n"
+                       "ratify: 1 proposed, 0 eligible; shorthand.ratification: human\n")
+        self.assertRan(self.bare(sub, "due", env=env), 0,
+                       "retire: cfg: no date\nreview: cfg: no date\n"
+                       "audit: due, never audited, every 30 days; fresh-decoder, sample: cfg\n"
+                       "due: 1 to retire, 1 to review, the audit due\n")
+
+    def test_outside_git_the_current_directory(self):
+        out = os.path.join(self.p.root, "outside")
+        os.makedirs(os.path.join(out, ".claude", "respeak"))
+        with open(os.path.join(out, LEXICON_REL), "w") as f:
+            f.write("entries:\n" + entry("IU") + entry("IV"))
+        env = dict(self.p.env, GIT_CEILING_DIRECTORIES=self.p.root, RESPEAK_TODAY="2026-10-16")
+        self.assertRan(self.bare(out, "check", env=env), 1,
+                       "too near: IU and IV, 1 apart (min 2)\n"
+                       "lexicon: 1 problem, 2 ratified of 150, the nearest two 1 apart (min 2)\n")
+        self.assertRan(self.bare(out, "use", "IU", "--outcome", "failure", env=env), 0)
+        self.assertEqual([u["term"] for u in lex.uses(out)], ["IU"])
+        # and --root, given, still wins
+        r = self.bare(out, "check", "--root", self.p.dir, env=env)
+        self.assertRan(r, 0, SEED_LINE)
 
 
 if __name__ == "__main__":

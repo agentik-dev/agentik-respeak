@@ -2,6 +2,38 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
+## 0.10.0 (2026-10-16)
+
+- `plugin/scripts/respeak-lexicon.py due` reads the lexicon's three clocks
+  and writes nothing. An entry is due to retire after 180 days with no
+  clean use, counted from the later of its newest clean use and its
+  `ratified_by` date. It is due for review every 90 days from its `reviewed:` date, else
+  `ratified_by`. The fresh-decoder audit falls due 30 days after the
+  lexicon's top-level `audited:` date and names a sample of 10 ratified
+  terms, chosen by the day. A person writes `reviewed:` and `audited:`.
+  `due` exits 0 whatever is due, and 2 on a bad value.
+- `retire_after_days_unused`, `review_cadence_days` and `legibility_audit`
+  return to the shipped config, tagged with their reader; only `due` checks
+  them.
+- The translator, when the caller asks, ends with a `uses:` line naming
+  each lexicon term the source used, clean or a failure, with readback. The
+  respeak skill asks for it, drops it before the gate and the relay, and
+  runs `respeak-lexicon.py use` for each term. `respeak-render.sh` never
+  asks. The translator still has no Bash.
+- `use`, when it creates `.claude/respeak/uses.jsonl`, also writes
+  `.claude/respeak/.gitattributes` with `uses.jsonl merge=union` if there is
+  none, so two branches that each record a use merge cleanly.
+- Without `--root`, every verb works on the top of the git work tree that
+  holds the current directory, else the current directory. Run from a
+  subdirectory, it reads the project's files, not the seed.
+- A lexicon date out of range, such as `2026-13-01`, exits 2 with one line
+  instead of a traceback, as does an audit date past 9999-12-31.
+- Every verb refuses a lexicon term that holds whitespace or a shell
+  character (`` ` `` `$` `;` `|` `&` `<` `>` `"` `'` `\`), since the skill
+  passes each term to `use` on a command line, in single quotes. The seed's
+  terms pass.
+- `respeak-lexicon.py` writes no `__pycache__` for the modules it loads.
+
 ## 0.9.0 (2026-10-16)
 
 - `plugin/scripts/respeak-lexicon.py check` holds the ratified entries to

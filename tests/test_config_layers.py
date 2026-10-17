@@ -1063,20 +1063,21 @@ class V043CLI(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # r2: a shorthand key with no observable behaviour is not shipped (README:
 # a config field with no observable behaviour is deleted); NICE_TO_HAVE.md
-# holds the plan for the removed ones. r16 returns each key with its reader,
-# scripts/respeak-lexicon.py.
+# holds the plan for the removed ones. r16 and r17 return each key with its
+# reader, scripts/respeak-lexicon.py.
 # ---------------------------------------------------------------------------
 
 class ShorthandGovernanceKeys(unittest.TestCase):
     SHIPPED = os.path.join(PLUGIN, "config", "respeak.config.yaml")
     # tagged [not built] in 66531f7: declared, and nothing read them
-    NOT_BUILT = ("retire_after_days_unused",
-                 "review_cadence_days", "legibility_audit", "register_marker",
-                 "reserved_metawords", "readback_required_for", "decompress_on")
+    NOT_BUILT = ("register_marker", "reserved_metawords", "readback_required_for",
+                 "decompress_on")
     # the keys with behaviour: a fixed path the scripts use, the translator's prompt,
-    # or respeak-lexicon.py (r16: check reads the cap and the distance, ratify those and auto)
+    # or respeak-lexicon.py (r16: check reads the cap and the distance, ratify those and
+    # auto; r17: due reads the three clocks)
     KEPT = {"lexicon", "proposal_dir", "ratification", "legibility_floor", "never_compress",
-            "max_entries", "min_token_edit_distance", "auto"}
+            "max_entries", "min_token_edit_distance", "auto",
+            "retire_after_days_unused", "review_cadence_days", "legibility_audit"}
 
     def setUp(self):
         self.fx = Fixture()
