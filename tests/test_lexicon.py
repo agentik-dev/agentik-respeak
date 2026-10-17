@@ -1,5 +1,6 @@
 """Tests for plugin/scripts/respeak-lexicon.py: the lexicon's static rules, its
-use record, the ratification verdict, and its clocks.
+use record, the ratification verdict, and its clocks; and the writer's
+wiring, the translator's `uses:` line and the skill's step 6 that records it.
 
 The script reads R/.claude/respeak/lexicon.yaml, else the plugin's seed, and
 `shorthand` from the plugin defaults with R/.claude/respeak/config.yaml over
@@ -12,11 +13,14 @@ verdicts; each 2 on a bad value, a bad lexicon or a refusal.
 """
 import contextlib
 import datetime
+import fnmatch
 import hashlib
 import importlib.util
 import io
 import json
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -689,6 +693,126 @@ class DueClocks(Case):
         self.due("2027-10-02")
         self.due("2026-10-16")
         self.assertEqual(self.p.tree(), before)
+
+
+AGENT_MD = os.path.join(PLUGIN, "agents", "respeak.md")
+SKILL_MD = os.path.join(PLUGIN, "skills", "respeak", "SKILL.md")
+RENDER = os.path.join(PLUGIN, "scripts", "respeak-render.sh")
+USE_CALL = ('"${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py use "<term>" '
+            '--outcome <outcome> [--readback] --source "<source>" --root "${CLAUDE_PROJECT_DIR}"')
+USES_ITEM = re.compile(r"`([^`]+)` (clean|failure)( readback)?")
+
+
+def parse_uses(line):
+    """The translator's `uses:` line as (term, outcome, readback) items, as
+    the skill's step 6 reads it; None for a line out of the shape."""
+    if not line.startswith("uses: "):
+        return None
+    body = line[len("uses: "):]
+    if body == "none":
+        return []
+    items = []
+    for part in body.split("; "):
+        m = USES_ITEM.fullmatch(part)
+        if not m:
+            return None
+        items.append((m.group(1), m.group(2), bool(m.group(3))))
+    return items
+
+
+def flat(text):
+    return " ".join(text.split())
+
+
+def read(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+class UseWiring(Case):
+    """The writer: the translator names the uses when asked, the skill
+    records them through `use`, and the render never asks."""
+
+    def test_the_agent_text(self):
+        text = read(AGENT_MD)
+        self.assertIn("tools: Read, Grep, Glob, Write", text.split("\n---\n")[0].splitlines(),
+                      "the translator gets no Bash")
+        self.assertIn("When the caller asks for uses, one more final line, the last: `uses: ` "
+                      "then each lexicon term the source used, `` `<term>` clean `` or "
+                      "`` `<term>` failure `` (used true to its definition, or not), plus "
+                      "` readback` when its receiver used it back, joined by `; `; with none, "
+                      "`uses: none`. The caller records them; you run nothing.", flat(text))
+
+    def test_the_skill_text(self):
+        text = read(SKILL_MD)
+        body = flat(text.split("\n---\n", 1)[1])
+        self.assertEqual(re.findall(r"(?m)^(\d+)\. ", text), [str(n) for n in range(1, 8)])
+        ask = "ask it for its `uses:` line"
+        drop = ("First drop each reply's last line when it reads `uses: …`: step 6 records it; "
+                "it is neither scanned nor relayed.")
+        record = ("6. Record the uses, once, from the agent's first `uses:` line; "
+                  "`uses: none` records nothing.")
+        skip = ("A refusal naming `no .claude/respeak/` means the project keeps no use record: "
+                "skip the rest silently. Name any other refusal in one line after the narrative.")
+        for phrase in (ask, drop, record, USE_CALL, skip):
+            self.assertIn(phrase, body)
+        order = [body.index(p) for p in ("4. Delegate", ask, "5. Verify", drop, "respeak-measure.py",
+                                         record, USE_CALL, skip, "7. If the agent reports")]
+        self.assertEqual(order, sorted(order))
+
+    def test_the_grant_admits_the_call(self):
+        text = read(SKILL_MD)
+        front = text.split("\n---\n", 1)[0]
+        rules = re.findall(r"Bash\(([^)]*)\)", re.search(r"(?m)^allowed-tools: (.*)$", front).group(1))
+        lines = [l.strip().strip("`") for l in text.splitlines()]
+        call = next(l for l in lines if "respeak-lexicon.py use" in l)
+        self.assertEqual(call, USE_CALL)
+        measure = next(l for l in lines if l.startswith('"') and "respeak-measure.py" in l)
+        for each in (call, measure):
+            with self.subTest(call=each[:40]):
+                # the plugin root substituted as Claude Code does on load, the shell's words
+                argv = shlex.split(each.replace("[--readback]", "--readback").split(" <<")[0])
+                command = " ".join(argv).replace("${CLAUDE_PLUGIN_ROOT}", "/p")
+                self.assertTrue(any(fnmatch.fnmatchcase(command, r.replace("${CLAUDE_PLUGIN_ROOT}", "/p"))
+                                    for r in rules), (command, rules))
+        self.assertEqual(call.split(" ")[0], measure.split(" ")[0], "step 5's grant, step 6's call")
+
+    def test_the_render_never_asks(self):
+        self.assertIsNone(re.search(r"\buses\b", read(RENDER)))
+
+    def test_a_line_in_the_shape_gives_its_records(self):
+        self.p.lexicon(entry("cfg"), entry("R1..R7"), entry("2-lane", "proposed", 0.6))
+        reply = ("\U0001f4e3 respeak · bluf\n\nThe narrative.\nlexicon: 0 proposals written\n"
+                 "uses: `cfg` clean readback; `2-lane` failure; `R1..R7` clean")
+        *narrative, last = reply.splitlines()
+        self.assertNotIn("uses:", "\n".join(narrative), "the narrative scanned and relayed")
+        items = parse_uses(last)
+        self.assertEqual(items, [("cfg", "clean", True), ("2-lane", "failure", False),
+                                 ("R1..R7", "clean", False)])
+        env = dict(self.p.env, RESPEAK_TODAY="2026-10-16")
+        for term, outcome, readback in items:
+            argv = (["use", term, "--outcome", outcome] + (["--readback"] if readback else [])
+                    + ["--source", "session s1"])
+            self.assertRan(self.p.run(*argv, env=env, wrapper=True), 0)
+        rec = {"date": "2026-10-16", "source": "session s1"}
+        self.assertEqual(lex.uses(self.p.dir), [
+            dict(rec, term="cfg", outcome="clean", readback=True),
+            dict(rec, term="2-lane", outcome="failure", readback=False),
+            dict(rec, term="R1..R7", outcome="clean", readback=False)])
+        self.assertRan(self.p.run("ratify"), 0,
+                       "2-lane: not eligible: 0 of 5 clean uses with readback; "
+                       "1 fidelity failure, 0 allowed\n"
+                       "ratify: 1 proposed, 0 eligible; shorthand.ratification: human\n")
+        # none records nothing; a line out of the shape is not read
+        self.assertEqual(parse_uses("uses: none"), [])
+        for bad in ("uses: cfg clean", "uses: `cfg` fine", "uses: `cfg` clean, `R1..R7` clean",
+                    "lexicon: 0 proposals written"):
+            self.assertIsNone(parse_uses(bad), bad)
+        # the refusal the skill skips on is the one `use` gives
+        shutil.rmtree(self.p.respeak)
+        r = self.p.run("use", "cfg", "--outcome", "clean", env=env, wrapper=True)
+        self.assertRan(r, 2, "")
+        self.assertIn("no .claude/respeak/", r.stderr)
 
 
 if __name__ == "__main__":

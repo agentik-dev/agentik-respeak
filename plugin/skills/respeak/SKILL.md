@@ -46,11 +46,14 @@ Steps:
 4. Delegate to the `respeak:respeak` agent with: the mode, the contents of
    that resolved config file verbatim under a heading
    `Resolved respeak configuration`, the source material, and the working
-   directory. Do not translate inline yourself — the agent owns the corpus
-   gates and lexicon bookkeeping, and an inline paraphrase bypasses both.
+   directory; ask it for its `uses:` line. Do not translate inline
+   yourself — the agent owns the corpus gates and lexicon bookkeeping, and
+   an inline paraphrase bypasses both.
 5. Verify before relaying — do not trust the agent's narrative on its own
-   report. Feed the narrative to the scanner on stdin (a heredoc; no temp
-   file, so no file-write permission is needed):
+   report. First drop each reply's last line when it reads `uses: …`:
+   step 6 records it; it is neither scanned nor relayed. Feed the narrative
+   to the scanner on stdin (a heredoc; no temp file, so no file-write
+   permission is needed):
    ```
    "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-measure.py - --fail-on error --config "/tmp/respeak-${CLAUDE_CODE_SESSION_ID}.yaml" <<'RESPEAK_EOF'
    <the narrative, verbatim>
@@ -68,5 +71,12 @@ Steps:
      first), with the final measure report appended under a `respeak gate:
      still failing after 2 rounds` heading — the human sees exactly what did not clear, instead of
      a silently-shipped violation. Do not attempt a 3rd round yourself.
-6. If the agent reports lexicon proposals, list the proposed terms in one
+6. Record the uses, once, from the agent's first `uses:` line; `uses: none`
+   records nothing. For each `` `<term>` <outcome> `` item, run
+   `"${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py use "<term>" --outcome <outcome> [--readback] --source "<source>" --root "${CLAUDE_PROJECT_DIR}"`
+   with `--readback` when the item ends in `readback`, and `<source>` the
+   `$source` file path, else `session ${CLAUDE_CODE_SESSION_ID}`. A refusal
+   naming `no .claude/respeak/` means the project keeps no use record: skip
+   the rest silently. Name any other refusal in one line after the narrative.
+7. If the agent reports lexicon proposals, list the proposed terms in one
    line and note that ratification is pending per the shorthand config.

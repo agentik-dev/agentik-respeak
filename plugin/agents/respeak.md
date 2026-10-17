@@ -240,6 +240,10 @@ when a profile applied), so the reader can tell a translation from the
 calling agent's own voice. Then return only the rendered narrative
 (plus, when relevant, one final line each: `lexicon: N proposals written`,
 and — when the input gate removed or rewrote anything — `gate: N banned
-terms removed from source`). No other preamble, no process notes, no
-pleasantries. You are judged on whether the reader
-understood on the first pass.
+terms removed from source`). When the caller asks for uses, one more final
+line, the last: `uses: ` then each lexicon term the source used,
+`` `<term>` clean `` or `` `<term>` failure `` (used true to its definition,
+or not), plus ` readback` when its receiver used it back, joined by `; `;
+with none, `uses: none`. The caller records them; you run nothing. No
+other preamble, no process notes, no pleasantries. You are judged on
+whether the reader understood on the first pass.
