@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""respeak-lexicon: the shorthand lexicon's static rules.
+"""respeak-lexicon: the shorthand lexicon's static rules and its use record.
 
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py check [--root R]
+    "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py use TERM --outcome clean|failure \
+        [--readback] [--source S] [--root R]
 
 Inputs, and nothing else: R/.claude/respeak/lexicon.yaml, else the plugin's
 seed corpus/lexicon.yaml; and `shorthand` from the plugin defaults
@@ -19,12 +21,25 @@ one summary line:
 
     lexicon: ok, 2 ratified of 150, the nearest two 6 apart (min 2)
 
-Exit: check 0 ok, 1 a problem; 2 on a usage error, a bad key value, or a
-lexicon that cannot be read as entries, with one line and no traceback.
+`use` records one use of a lexicon term in R/.claude/respeak/uses.jsonl,
+committed beside the lexicon: one JSON object a line, appended with one
+O_APPEND write and never rewritten, its keys `term`, `date` (YYYY-MM-DD,
+UTC today, or RESPEAK_TODAY when set), `outcome` (clean | failure),
+`readback` (true with --readback), then `source` when given. It refuses a
+term the lexicon lacks or has retired, a bad date, and a root with no
+.claude/respeak/. It is the file's only writer; a reader skips a line that
+is not such a record and names it on stderr.
+
+Exit: check 0 ok, 1 a problem; use 0 recorded; each 2 on a usage error, a
+bad key value, a lexicon that cannot be read as entries, or a refusal, with
+one line and no traceback.
 """
 import argparse
+import datetime
 import importlib.util
+import json
 import os
+import re
 import sys
 
 import yaml
@@ -36,7 +51,10 @@ DEFAULTS = os.path.join(PLUGIN_ROOT, "config", "respeak.config.yaml")
 SEED = os.path.join(PLUGIN_ROOT, "corpus", "lexicon.yaml")
 PROJECT_REL = os.path.join(".claude", "respeak", "config.yaml")
 LEXICON_REL = os.path.join(".claude", "respeak", "lexicon.yaml")
+USES_REL = os.path.join(".claude", "respeak", "uses.jsonl")
 STATUSES = ("proposed", "ratified", "retired")
+OUTCOMES = ("clean", "failure")
+DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
 
 class Usage(Exception):
@@ -135,6 +153,61 @@ def lexicon(root):
     return entries
 
 
+def is_date(text):
+    if not isinstance(text, str) or not DATE_RE.match(text):
+        return False
+    try:
+        datetime.date.fromisoformat(text)
+    except ValueError:
+        return False
+    return True
+
+
+def why_not_use(rec):
+    """Why rec is not a use record, or None when it is one."""
+    if not isinstance(rec, dict):
+        return "not a JSON object"
+    if not isinstance(rec.get("term"), str) or not rec["term"]:
+        return "no term"
+    if not is_date(rec.get("date")):
+        return "no YYYY-MM-DD date"
+    if rec.get("outcome") not in OUTCOMES:
+        return "outcome is not clean or failure"
+    if not isinstance(rec.get("readback"), bool):
+        return "readback is not true or false"
+    if "source" in rec and not isinstance(rec["source"], str):
+        return "source is not a string"
+    return None
+
+
+def uses(root):
+    """The use records in R/.claude/respeak/uses.jsonl, in file order; [] with
+    no file. A line that is not a record is skipped and named on stderr."""
+    try:
+        with open(os.path.join(root, USES_REL), "rb") as f:
+            raw = f.read()
+    except FileNotFoundError:
+        return []
+    except OSError as e:
+        raise Usage("%s unreadable: %s" % (USES_REL, e.strerror or e))
+    records = []
+    lines = raw.split(b"\n")
+    if lines[-1] == b"":
+        lines.pop()  # the file's last newline ends a line; it starts none
+    for n, line in enumerate(lines, 1):
+        try:
+            rec = json.loads(line.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            rec, why = None, "not JSON"
+        else:
+            why = why_not_use(rec)
+        if why:
+            warn("%s:%d: %s; skipped" % (USES_REL, n, why))
+            continue
+        records.append(rec)
+    return records
+
+
 # --------------------------------------------------------------------------
 # the rules
 # --------------------------------------------------------------------------
@@ -181,22 +254,70 @@ def check(root):
     return 1 if n else 0
 
 
+def today():
+    given = os.environ.get("RESPEAK_TODAY")
+    if not given:
+        return datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+    if not is_date(given):
+        raise Usage("RESPEAK_TODAY must be a YYYY-MM-DD date, not %r" % given)
+    return given
+
+
+def use(root, term, outcome, readback, source):
+    if not os.path.isdir(os.path.join(root, ".claude", "respeak")):
+        raise Usage("no .claude/respeak/ under %s; /respeak:init creates it" % root)
+    statuses = [e["status"] for e in lexicon(root) if e["term"] == term]
+    if not statuses:
+        raise Usage("%s is not a lexicon term; refused" % term)
+    if all(s == "retired" for s in statuses):
+        raise Usage("%s is retired; refused" % term)
+    rec = {"term": term, "date": today(), "outcome": outcome, "readback": readback}
+    if source is not None:
+        rec["source"] = source
+    line = (json.dumps(rec, ensure_ascii=False) + "\n").encode("utf-8")
+    path = os.path.join(root, USES_REL)
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+                     0o644)
+    except OSError as e:
+        raise Usage("cannot append to %s: %s" % (USES_REL, e.strerror or e))
+    try:
+        size = os.fstat(fd).st_size
+        if size and os.pread(fd, 1, size - 1) != b"\n":
+            line = b"\n" + line  # a last line cut short stays its own line
+        if os.write(fd, line) != len(line):
+            raise Usage("%s: a short write; the last line may be cut" % USES_REL)
+    finally:
+        os.close(fd)
+    print("use: %s %s%s on %s, recorded in %s" % (term, outcome, " with readback" if readback else "",
+                                                   rec["date"], USES_REL))
+    return 0
+
+
 # --------------------------------------------------------------------------
 # main
 # --------------------------------------------------------------------------
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="respeak-lexicon.py",
-                                description="The shorthand lexicon's static rules.")
-    sub = p.add_subparsers(dest="verb", required=True, metavar="{check}")
+                                description="The shorthand lexicon's static rules and its use record.")
+    sub = p.add_subparsers(dest="verb", required=True, metavar="{check,use}")
     s = sub.add_parser("check", help="hold the ratified entries to the cap and the edit distance")
-    s.add_argument("--root", metavar="R", default=".",
-                   help="the project directory (default: the current one)")
+    u = sub.add_parser("use", help="append one use of a term to .claude/respeak/uses.jsonl")
+    u.add_argument("term", metavar="TERM")
+    u.add_argument("--outcome", required=True, choices=OUTCOMES)
+    u.add_argument("--readback", action="store_true", help="the reader read the term back")
+    u.add_argument("--source", metavar="S", help="where the use was seen")
+    for x in (s, u):
+        x.add_argument("--root", metavar="R", default=".",
+                       help="the project directory (default: the current one)")
     args = p.parse_args(argv)
     try:
         root = os.path.realpath(args.root)
         if not os.path.isdir(root):
             raise Usage("not a directory: %s" % args.root)
+        if args.verb == "use":
+            return use(root, args.term, args.outcome, args.readback, args.source)
         return check(root)
     except Usage as e:
         warn(str(e))

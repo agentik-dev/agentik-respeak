@@ -1,11 +1,19 @@
-"""Tests for plugin/scripts/respeak-lexicon.py: the lexicon's static rules.
+"""Tests for plugin/scripts/respeak-lexicon.py: the lexicon's static rules and
+its use record.
 
 The script reads R/.claude/respeak/lexicon.yaml, else the plugin's seed, and
 `shorthand` from the plugin defaults with R/.claude/respeak/config.yaml over
-them; no user, folder or local layer. Each case builds a project under a
-temp HOME (CLAUDE_CONFIG_DIR inside it) and runs the script with --root.
-Exits: check 0 ok, 1 a problem, 2 a bad value or lexicon.
+them; no user, folder or local layer. `use` appends to
+R/.claude/respeak/uses.jsonl. Each case builds a project under a temp HOME
+(CLAUDE_CONFIG_DIR inside it) and runs the script with --root.
+Exits: check 0 ok, 1 a problem; use 0; each 2 on a bad value, a bad lexicon
+or a refusal.
 """
+import contextlib
+import datetime
+import importlib.util
+import io
+import json
 import os
 import shutil
 import subprocess
@@ -19,6 +27,12 @@ PLUGIN = os.path.join(REPO, "plugin")
 SCRIPT = os.path.join(PLUGIN, "scripts", "respeak-lexicon.py")
 PY_WRAPPER = os.path.join(PLUGIN, "scripts", "py")
 SEED_LINE = "lexicon: ok, 2 ratified of 150, the nearest two 6 apart (min 2)\n"
+USES_REL = os.path.join(".claude", "respeak", "uses.jsonl")
+
+_spec = importlib.util.spec_from_file_location("respeak_lexicon", SCRIPT)
+assert _spec is not None and _spec.loader is not None
+lex = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(lex)
 
 
 def entry(term, status="ratified", legibility=0.9):
@@ -58,6 +72,10 @@ class Project:
 
     def lexicon(self, *entries):
         return self.write(".claude/respeak/lexicon.yaml", "version: 1\nentries:\n" + "".join(entries))
+
+    def uses(self):
+        with open(os.path.join(self.dir, USES_REL), "rb") as f:
+            return f.read()
 
     def run(self, *args, wrapper=False, env=None):
         argv = [PY_WRAPPER, "respeak-lexicon.py"] if wrapper else [sys.executable, SCRIPT]
@@ -158,6 +176,115 @@ class LexiconCheck(Case):
         r = subprocess.run([sys.executable, SCRIPT, "check", "--root", os.path.join(self.p.root, "no")],
                            env=self.p.env, capture_output=True, text=True, timeout=60)
         self.assertRan(r, 2, "")
+
+
+
+def utc_today():
+    return datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+
+
+class UseRecord(Case):
+    def setUp(self):
+        super().setUp()
+        self.env = dict(self.p.env, RESPEAK_TODAY="2026-10-16")
+
+    def test_the_line(self):
+        r = self.p.run("use", "2-lane", "--outcome", "clean", "--readback", "--source", "night 4",
+                       env=self.env)
+        self.assertRan(r, 0, "use: 2-lane clean with readback on 2026-10-16, recorded in %s\n"
+                       % USES_REL)
+        first = (b'{"term": "2-lane", "date": "2026-10-16", "outcome": "clean", '
+                 b'"readback": true, "source": "night 4"}\n')
+        self.assertEqual(self.p.uses(), first)
+        # appended, never rewritten; no source, no key; readback false without the flag
+        r = self.p.run("use", "cfg", "--outcome", "failure", env=self.env, wrapper=True)
+        self.assertRan(r, 0)
+        self.assertEqual(self.p.uses(), first + b'{"term": "cfg", "date": "2026-10-16", '
+                         b'"outcome": "failure", "readback": false}\n')
+        self.assertEqual([u["term"] for u in lex.uses(self.p.dir)], ["2-lane", "cfg"])
+
+    def test_refusals(self):
+        self.p.lexicon(entry("cfg"), entry("old", "retired"), entry("again", "retired"),
+                       entry("again", "proposed"))
+        for args, env, why in (
+                (["nope"], self.env, "not a lexicon term"),
+                (["old"], self.env, "retired"),
+                (["cfg"], dict(self.env, RESPEAK_TODAY="2026-13-01"), "RESPEAK_TODAY"),
+                (["cfg"], dict(self.env, RESPEAK_TODAY="20261016"), "RESPEAK_TODAY"),
+                (["cfg"], dict(self.env, RESPEAK_TODAY="today"), "RESPEAK_TODAY"),
+                (["cfg", "--outcome", "fine"], self.env, "invalid choice")):
+            with self.subTest(args=args, env=env.get("RESPEAK_TODAY")):
+                argv = ["use"] + args + ([] if "--outcome" in args else ["--outcome", "clean"])
+                r = self.p.run(*argv, env=env)
+                self.assertRan(r, 2, "")
+                self.assertIn(why, r.stderr)
+                self.assertFalse(os.path.lexists(os.path.join(self.p.dir, USES_REL)))
+        # a term retired once and proposed again is a term
+        self.assertRan(self.p.run("use", "again", "--outcome", "clean", env=self.env), 0)
+        # no .claude/respeak/: nothing to commit the record beside
+        shutil.rmtree(os.path.join(self.p.dir, ".claude"))
+        r = self.p.run("use", "cfg", "--outcome", "clean", env=self.env)
+        self.assertRan(r, 2, "")
+        self.assertIn("no .claude/respeak/", r.stderr)
+        self.assertFalse(os.path.lexists(os.path.join(self.p.dir, ".claude")))
+
+    def test_a_symlinked_record_is_refused(self):
+        target = self.p.write("elsewhere.jsonl", "")
+        os.symlink(target, os.path.join(self.p.dir, USES_REL))
+        r = self.p.run("use", "cfg", "--outcome", "clean", env=self.env)
+        self.assertRan(r, 2, "")
+        self.assertIn("cannot append", r.stderr)
+        with open(target) as f:
+            self.assertEqual(f.read(), "")
+
+    def test_the_clock(self):
+        for env in (self.p.env, dict(self.p.env, RESPEAK_TODAY="")):
+            before = utc_today()
+            self.assertRan(self.p.run("use", "cfg", "--outcome", "clean", env=env), 0)
+            after = utc_today()
+            self.assertIn(lex.uses(self.p.dir)[-1]["date"], (before, after))
+        self.assertRan(self.p.run("use", "cfg", "--outcome", "clean",
+                                  env=dict(self.p.env, RESPEAK_TODAY="2024-02-29")), 0)
+        self.assertEqual(lex.uses(self.p.dir)[-1]["date"], "2024-02-29")
+
+    def test_a_skip(self):
+        good = {"term": "cfg", "date": "2026-10-16", "outcome": "clean", "readback": True}
+        lines = [json.dumps(good), "not json", "[1, 2]",
+                 json.dumps(dict(good, outcome="fine")), "",
+                 json.dumps(dict(good, date="2026-10-32")),
+                 json.dumps(dict(good, readback="yes")),
+                 json.dumps(dict(good, term="2-lane", source="s"))]
+        self.p.write(USES_REL, "\n".join(lines) + "\n")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            records = lex.uses(self.p.dir)
+        self.assertEqual(records, [good, dict(good, term="2-lane", source="s")])
+        named = [l.split(": ", 2)[1] for l in err.getvalue().splitlines()]
+        self.assertEqual(named, ["%s:%d" % (USES_REL, n) for n in (2, 3, 4, 5, 6, 7)])
+        self.assertIn("skipped", err.getvalue())
+        # a last line cut short: the next use starts its own line
+        self.p.write(USES_REL, json.dumps(good) + "\n" + '{"term": "cf')
+        self.assertRan(self.p.run("use", "cfg", "--outcome", "clean", "--readback", env=self.env), 0)
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(lex.uses(self.p.dir), [good, good])
+
+    def test_concurrent_appends_stay_whole(self):
+        # the fork's test (packet r16, section 6): one O_APPEND write a use,
+        # so no two lines interleave
+        procs = [subprocess.Popen([sys.executable, SCRIPT, "use", "cfg", "--outcome", "clean",
+                                   "--source", "writer %02d" % i, "--root", self.p.dir],
+                                  env=self.env, stdin=subprocess.DEVNULL,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                 for i in range(16)]
+        for proc in procs:
+            _, err = proc.communicate(timeout=60)
+            self.assertEqual(proc.returncode, 0, err)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            records = lex.uses(self.p.dir)
+        self.assertEqual(err.getvalue(), "")
+        self.assertEqual(sorted(r["source"] for r in records),
+                         ["writer %02d" % i for i in range(16)])
 
 
 if __name__ == "__main__":
