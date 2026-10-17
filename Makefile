@@ -30,7 +30,7 @@ CLAUDE ?= claude
 check:
 	$(PYTHON) scripts/bounded --lock .check.lock --wall 840 --load 4 -- $(MAKE) check-unlocked
 
-check-unlocked: test lint doclint hygiene readme-fresh validate
+check-unlocked: test lint doclint hygiene plugin-version-check readme-fresh validate
 
 # Every spawn here is bounded: respeak-deadline.sh runs it in its own process group and kills
 # the group at the wall clock (exit 124), so a hung suite or a slow claude fails the target.
@@ -61,6 +61,10 @@ hygiene:
 	@shasum -a 256 -c --status scripts/vendored.sha256 || { echo "hygiene: scripts/agentik, scripts/hygiene or scripts/bounded differ from scripts/vendored.sha256; re-run agentik-commons scripts/sync"; exit 2; }
 	@printf '%s  %s\n' $(DOCLINT_SHA) scripts/doclint | shasum -a 256 -c --status || { echo "hygiene: scripts/doclint differs from its pinned copy"; exit 2; }
 	$(PYTHON) scripts/hygiene
+
+## plugin-version-check: red when a file under plugin/ changed after the commit that last moved plugin.json's version (conventions section 7); exits 0, 1, 2
+plugin-version-check:
+	$(PYTHON) scripts/plugin-version-check
 
 # README.md is rendered from design/readme/source.md (conventions section 6); edit the source.
 # The render is an editorial pass, not a summary: design/readme/contract.txt is its contract, and

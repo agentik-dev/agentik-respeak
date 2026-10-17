@@ -30,3 +30,10 @@ Nothing here blocks a review or a merge. An item leaves when it lands, or when a
 - (r16, 2026-10-16, S4) `plugin/scripts/lexicon-status.sh` counts ratified terms with `grep -c 'status: ratified'`, so the seed's header comment on line 5 counts as one: the SessionStart note says 3 ratified terms where the seed holds 2, and `respeak-lexicon.py check` says 2. Fix: count the parsed entries.
 - (r18, 2026-10-17, S4) README's tests table still describes `tests/test_lexicon.py` as the cap, the edit distance, the use record and the ratification verdict, leaving out the clocks, the triggers and the audit. Fix: name them at the next `make readme`.
 - (r18, 2026-10-17, S4, unchecked) `audit`'s rule, each expansion run begins a decoding word, passes a one-character run on any word it starts: an expansion's `1` is decoded by `10`. Fix, if the owner wants it stricter: a run of one character must equal a word.
+
+## sync-vc1's build (2026-10-17): what it leaves (S4)
+
+1. `plugin-version-check` is not in `.PHONY` (Makefile line 20), so a stray root file of that name skips the check. Fix in the next packet that touches the Makefile.
+2. The hygiene failure message (Makefile line 61) and the comment at line 53 name three vendored copies, while `scripts/vendored.sha256` pins four. Fix in the same packet.
+3. The vendored doclint's `MAKE_TARGETED` list lacks `plugin-version-check`, so a later packet's acceptance line `make plugin-version-check` would hit the suite rule. Commons' to settle.
+4. From now on, any packet that edits `plugin/` lists `plugin/.claude-plugin/plugin.json` in its may-touch and bumps the version, or `make check` reads red (GUIDE §7).
