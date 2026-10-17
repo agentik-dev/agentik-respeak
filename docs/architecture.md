@@ -198,13 +198,18 @@ re-read on 2026-10-14; re-open that page before relying on them.
 
 ## Refinements the research forced (v0 → v1)
 
-- **Ratification alone is not governance.** The lexicon now carries the full
+- **Ratification alone is not governance.** The research asks for the full
   codified-shorthand toolkit: size cap (~150), min token edit distance,
   scheduled re-harmonization (90d), usage-based retirement (180d), reserved
   repair metawords (CORRECTION, SAY-AGAIN, UNVERIFIED), in-band register
   marking, readback for high-stakes messages, and monthly fresh-decoder
   audits — because drift happens *inside* governed systems and the most
-  fluent agents deviate most (ICAO's lesson).
+  fluent agents deviate most (ICAO's lesson). Built in 0.9.0, in
+  `plugin/scripts/respeak-lexicon.py`: `check` holds the ratified terms to
+  the cap (150) and the edit distance (2), `use` records each use in
+  `.claude/respeak/uses.jsonl`, and `ratify` says which proposals the
+  readback usage evidence makes eligible, writing nothing. The rest is
+  planned in `NICE_TO_HAVE.md`.
 - **Capture, don't suppress.** FAIR 2017 suppressed emergent codewords by
   rewarding English; respeak's differentiator is capturing them into the
   lexicon as proposals, with the translator as the standing reward channel.

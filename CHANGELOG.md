@@ -2,6 +2,28 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
+## 0.9.0 (2026-10-16)
+
+- `plugin/scripts/respeak-lexicon.py check` holds the ratified entries to
+  `shorthand.max_entries` (150) and `shorthand.min_token_edit_distance` (2,
+  Levenshtein over case-folded terms, each ratified pair). It prints a line
+  per problem, then one `lexicon:` line, and exits 0, 1 on a problem, or 2
+  on a bad value or lexicon.
+- `respeak-lexicon.py use TERM --outcome clean|failure` appends one JSON
+  line to `.claude/respeak/uses.jsonl`, committed beside the lexicon:
+  `term`, `date`, `outcome`, `readback`, then `source`. The date is UTC
+  today or `RESPEAK_TODAY`. It refuses a term the lexicon lacks or has
+  retired. Nothing calls it yet.
+- `respeak-lexicon.py ratify` judges each proposed entry by `shorthand.auto`
+  (`uses: 5`, `fidelity_failures_allowed: 0`, `readback_evidence: true`),
+  the distance, the cap and `legibility_floor`, and prints each verdict with
+  its reasons. It exits 0 whatever the verdicts and writes nothing: a person
+  ratifies.
+- The three keys return to the shipped config, each tagged with its
+  reader, and the script reads them from the plugin defaults and the
+  project file only. The seed lexicon's `uses:` field is not read; its
+  header points at the use record.
+
 ## 0.8.1 (2026-10-14)
 
 - The shipped config drops the ten `shorthand.*` keys nothing read:

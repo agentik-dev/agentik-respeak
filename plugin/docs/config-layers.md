@@ -133,7 +133,7 @@ both.
 | Keys | Allowed from | Why |
 | --- | --- | --- |
 | `gate.enabled`, `gate.include`, `gate.exclude` | plugin, project, project local, env, invocation | turning enforcement on and choosing which files it covers is a project decision; a stray folder file cannot flip it. The gate covers Markdown files only (`.md`, `.markdown`, `.mdx`, any letter case): `include` and `exclude` narrow within that set, and `explain` says "not a Markdown file" for anything else. The shipped `include` is `**/*.md`; list `**/*.mdx` or `**/*.markdown` to cover those too |
-| `shorthand.*` | same | ratification mode, legibility floor, never-compress classes, and the lexicon path must not vary by folder or by user |
+| `shorthand.*` | same | ratification mode, legibility floor, never-compress classes, the lexicon path, and the rules `respeak-lexicon.py` checks (`max_entries`, `min_token_edit_distance`, `auto`) must not vary by folder or by user; the script reads the plugin defaults and the project file only |
 | `style.banned_phrases`, `style.replacements`, `style.rules` | same | corpus pointers are resources, not tone |
 | `version`, `schema` | same | file identity |
 | everything else (`narrative`, `modes`, `profiles`, `style` budgets and switches, `editorial_pass`, `data`, `gate.fail_on`, `gate.block_on`, `gate.allow`) | any layer | tone, and per-file leniency |
