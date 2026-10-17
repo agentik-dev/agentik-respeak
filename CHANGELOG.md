@@ -23,10 +23,11 @@ Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
   full, flagged `not read back`.
 - `respeak-lexicon.py audit` reads a fresh decoder's `<term>: <decoding>`
   lines for today's sample on stdin. A term is decoded when each word of
-  its expansion begins a word of the decoding. It appends a record a term
-  to `.claude/respeak/audits.jsonl`, then writes the lexicon's `audited:`
-  line by rename, and exits 0 whatever is decoded; it refuses the seed, a
-  symlink, a term outside the sample and a term twice. The new skill
+  its expansion begins a word of the decoding; an empty decoding is
+  missed. It writes the lexicon's `audited:` line by rename, then appends
+  a record a term to `.claude/respeak/audits.jsonl`, and exits 0 whatever
+  is decoded; it refuses the seed, a symlink, a term outside the sample
+  and a term twice, writing nothing. The new skill
   `/respeak:audit` runs `due`, gives the sample to a fresh agent, and
   passes its lines to `audit`.
 - An empty `--root` exits 2. `.gitattributes`, now also `audits.jsonl

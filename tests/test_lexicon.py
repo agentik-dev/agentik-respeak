@@ -1372,6 +1372,48 @@ class DecoderAudit(Case):
         self.assertRan(r, 0, 'audit: cfg: missed, read as "a cat"\naudit: R1..R7: missed, read as ""\n'
                              "audit: 0 of 2 decoded, audited 2026-10-17\n")
 
+    def test_an_empty_decoding_is_missed_not_refused(self):
+        # F1: `cfg: ` and a bare `cfg:` are empty decodings, scored and recorded; a term with
+        # a colon of its own still splits at `: `; a line with no colon stays refused
+        for text, reading in (("cfg: \nR1..R7: research dimensions 1 to 7\n", "research dimensions 1 to 7"),
+                              ("R1..R7:research dimension 1 7\ncfg:\n", "research dimension 1 7")):
+            with self.subTest(text=text):
+                os.remove(self.lex)
+                self.p.write(LEXICON_REL, AUDIT_LEX)
+                before = len(self.audits()) if os.path.exists(os.path.join(self.p.dir, AUDITS_REL)) else 0
+                r = self.audit(text)
+                self.assertRan(r, 0)
+                self.assertEqual(r.stdout.splitlines()[:2], ['audit: cfg: missed, read as ""',
+                                                             "audit: R1..R7: decoded"])
+                self.assertEqual([(a["term"], a["decoding"], a["decoded"])
+                                  for a in self.audits()[before:]],
+                                 [("cfg", "", False), ("R1..R7", reading, True)])
+        self.p.write(LEXICON_REL, AUDIT_LEX.replace('"cfg"', '"c:fg"'))
+        r = self.audit("c:fg: configuration\nR1..R7:\n")
+        self.assertRan(r, 0)
+        self.assertEqual(r.stdout.splitlines()[:2], ["audit: c:fg: decoded",
+                                                     'audit: R1..R7: missed, read as ""'])
+        r = self.audit("cfg configuration\n")
+        self.assertRan(r, 2, "")
+        self.assertIn("stdin line 1 is not `<term>: <decoding>`", r.stderr)
+
+    def test_a_failure_before_the_stamp_writes_nothing(self):
+        # F2: the stamp (a rename in .claude/respeak/) goes first, the records after, so a
+        # directory that refuses the rename leaves neither, a writable record there included
+        record = self.p.write(AUDITS_REL, "")
+        os.chmod(self.p.respeak, 0o555)
+        self.addCleanup(os.chmod, self.p.respeak, 0o755)
+        before = self.lexicon_bytes()
+        r = self.audit("cfg: configuration\n")
+        self.assertRan(r, 2, "")
+        with open(record, "rb") as f:
+            self.assertEqual(f.read(), b"", "no record")
+        self.assertEqual(self.lexicon_bytes(), before, "no stamp")
+        help_text = " ".join(self.p.run("audit", "--help").stdout.split())
+        self.assertIn("a failure between the two leaves the stamp set and no records", help_text)
+        self.assertIn("A failure between the two leaves the stamp set and no records",
+                      flat(read(AUDIT_MD)))
+
     def test_inserted_before_entries_without_version_and_a_line_replaced(self):
         text = AUDIT_LEX.replace("version: 1\n", "")
         self.p.write(LEXICON_REL, text)

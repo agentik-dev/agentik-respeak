@@ -30,7 +30,9 @@ Steps:
    RESPEAK_EOF
    ```
 4. Relay its output verbatim: a line a term, decoded or missed, then
-   `audit: D of N decoded, audited <date>`. It appended the readings to
-   `.claude/respeak/audits.jsonl` and set the lexicon's `audited:` line,
-   both for a person to commit. A refusal writes nothing: name it in one
-   line.
+   `audit: D of N decoded, audited <date>`. It set the lexicon's
+   `audited:` line, then appended the readings to
+   `.claude/respeak/audits.jsonl`, both for a person to commit. A refusal
+   writes nothing: name it in one line. A failure between the two leaves
+   the stamp set and no records: name it, and run step 3 again today to
+   record them.

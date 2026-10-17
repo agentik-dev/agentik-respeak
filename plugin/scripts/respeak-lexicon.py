@@ -86,15 +86,17 @@ It writes nothing.
 R/.claude/respeak/lexicon.yaml (never the seed), a symlinked lexicon or
 record, a term outside today's `due` sample (named), and a term twice. A
 term is decoded when each [a-z0-9] run of its `expansion`, case-folded,
-begins a word of the decoding; a sampled term with no line is missed. A
+begins a word of the decoding; a sampled term with no line, or `<term>:`
+with nothing after it, is missed. A
 line a term, `audit: <term>: decoded` or `audit: <term>: missed, read as
 "<decoding>"`, then `audit: D of N decoded, audited <date>`. It writes, in
-order: a record a term to R/.claude/respeak/audits.jsonl (`term`, `date`,
-`method`, `decoding`, `decoded`), in one O_APPEND write, never to
-uses.jsonl, since a decoding is no use; .gitattributes as `use` does; then
-the lexicon's top-level `audited: <date>`, replacing that line or inserted
-after `version:` (else before `entries:`), every other byte kept, by
-rename.
+order: the lexicon's top-level `audited: <date>`, replacing that line or
+inserted after `version:` (else before `entries:`), every other byte kept,
+by rename; then a record a term to R/.claude/respeak/audits.jsonl (`term`,
+`date`, `method`, `decoding`, `decoded`), in one O_APPEND write, never to
+uses.jsonl, since a decoding is no use; then .gitattributes as `use` does.
+A refusal writes nothing; a failure between the two leaves the stamp set
+and no records.
 
 Exit: check 0 ok, 1 a problem; use 0 recorded; ratify, due and audit 0
 whatever the verdicts; each 2 on a usage error, a bad key value, a lexicon
@@ -760,7 +762,8 @@ def audit(root, text):
     for n, line in enumerate(text.splitlines(), 1):
         if not line.strip():
             continue
-        term, sep, decoding = line.strip().partition(": ")
+        body = line.strip()  # split at `: `, else the first colon: `term:` is an empty decoding
+        term, sep, decoding = body.partition(": ") if ": " in body else body.partition(":")
         if not sep or not term:
             raise Usage("stdin line %d is not `<term>: <decoding>`; refused" % n)
         if term in given:
@@ -791,10 +794,10 @@ def audit(root, text):
         records.append({"term": term, "date": day, "method": audit_key["method"],
                         "decoding": decoding, "decoded": ok})
         lines.append("audit: %s: %s" % (term, "decoded" if ok else 'missed, read as "%s"' % decoding))
+    replace(path, new)  # the stamp first: a failure before it writes nothing
     append(root, AUDITS_REL, "".join(json.dumps(r, ensure_ascii=False) + "\n"
                                      for r in records).encode("utf-8"))
     attributes(root)
-    replace(path, new)
     lines.append("audit: %d of %d decoded, audited %s"
                  % (sum(r["decoded"] for r in records), len(records), day))
     print("\n".join(lines))
@@ -832,7 +835,11 @@ def main(argv=None):
     v = sub.add_parser("ratify", help="judge each proposed entry by shorthand.auto; write nothing")
     d = sub.add_parser("due", help="the retire, review and audit clocks that are due; write nothing")
     a = sub.add_parser("audit", help="record a fresh decoder's `<term>: <decoding>` lines, on "
-                                     "stdin, for today's sample; write audits.jsonl and `audited:`")
+                                     "stdin, for today's sample; write `audited:`, then "
+                                     "audits.jsonl")
+    a.description = ("Write the lexicon's `audited:` line, then the records in audits.jsonl; "
+                     "a refusal writes nothing, and a failure between the two leaves the stamp "
+                     "set and no records.")
     for x in (s, u, v, d, a):
         x.add_argument("--root", metavar="R",
                        help="the project directory (default: the top of the git work tree "
