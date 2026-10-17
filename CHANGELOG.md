@@ -2,6 +2,37 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
+## 0.11.0 (2026-10-17)
+
+- The repair channel: `shorthand.reserved_metawords` (CORRECTION,
+  SAY-AGAIN, UNVERIFIED) returns to the shipped config. `check` names a
+  ratified term nearer one than `min_token_edit_distance`, and `ratify`
+  makes such a proposal not eligible; both exit 2 on a word with whitespace
+  or a shell character. The translator passes each word verbatim; the
+  `never_compress` class `reserved-metawords` is this list.
+- `shorthand.register_marker` (`required`): the translator ends its marker
+  line ` · shorthand` when the narrative keeps a ratified term unexpanded.
+  `check` exits 2 on a value other than `required` or `optional`.
+- The triggers: `shorthand.readback_required_for` and
+  `shorthand.decompress_on`, read and checked by `use` each call. `use --for
+  CLASS` refuses a class not listed, or a clean use without `--readback`,
+  and records `for`. With `repeated-fidelity-failure` listed, a term with 2
+  failure uses gets a `decompress:` line, which the respeak skill relays.
+  The translator decompresses in each listed case, whatever
+  `lexicon_access` says, and states an item it could not read back in
+  full, flagged `not read back`.
+- `respeak-lexicon.py audit` reads a fresh decoder's `<term>: <decoding>`
+  lines for today's sample on stdin. A term is decoded when each word of
+  its expansion begins a word of the decoding. It appends a record a term
+  to `.claude/respeak/audits.jsonl`, then writes the lexicon's `audited:`
+  line by rename, and exits 0 whatever is decoded; it refuses the seed, a
+  symlink, a term outside the sample and a term twice. The new skill
+  `/respeak:audit` runs `due`, gives the sample to a fresh agent, and
+  passes its lines to `audit`.
+- An empty `--root` exits 2. `.gitattributes`, now also `audits.jsonl
+  merge=union`, is written whenever it is absent, not only when `use`
+  creates the record. `due` reads `reviewed:` on ratified entries only.
+
 ## 0.10.0 (2026-10-16)
 
 - `plugin/scripts/respeak-lexicon.py due` reads the lexicon's three clocks

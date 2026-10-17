@@ -138,6 +138,7 @@ statusline segment. The SessionStart lexicon note is off until
 | `/respeak:on` | Undo `/respeak:off`; with `gate`, run the gate this session even where it is off. |
 | `/respeak:report` | File a bug, feature request, documentation note, or question on GitHub. |
 | `/respeak:include` | Write or check the repo's include file: its default writing rules, at most 1,500 bytes, for an `@` import. |
+| `/respeak:audit` | When the lexicon's audit is due, have a fresh agent decode today's sample and record what it decoded. |
 | `respeak:respeak` agent | The translator subagent the skill and natural-language asks reach. |
 
 ```
@@ -168,6 +169,7 @@ python3 plugin/scripts/respeak-lexicon.py check                    # the cap and
 python3 plugin/scripts/respeak-lexicon.py use cfg --outcome clean  # one line in .claude/respeak/uses.jsonl
 python3 plugin/scripts/respeak-lexicon.py ratify                   # which proposals are eligible; it writes nothing
 python3 plugin/scripts/respeak-lexicon.py due                      # the retire, review and audit clocks; it writes nothing
+python3 plugin/scripts/respeak-lexicon.py audit < readings.txt     # a fresh decoder's readings: audits.jsonl and `audited:`
 ```
 
 `respeak-verify-edit.py` checks that a style edit kept the structure. In
@@ -310,7 +312,7 @@ proposal is only a proposal until a human ratifies it.
 
 ## Status
 
-Status: version `0.10.0`, rendered `2026-10-16`, `331` unittest cases and `10` bash suites.
+Status: version `0.11.0`, rendered `2026-10-17`, `360` unittest cases and `10` bash suites.
 
 | Surface | State |
 |---|---|
@@ -318,18 +320,16 @@ Status: version `0.10.0`, rendered `2026-10-16`, `331` unittest cases and `10` b
 | Style gates and corpus | Working |
 | Buried-lede test and data-rendering contract | Working |
 | Lexicon proposal flow | Working |
-| Skills: `respeak:respeak`, `/respeak:init`, `/respeak:report`, `/respeak:off`, `/respeak:on`, `/respeak:include` | Working |
+| Skills: `respeak:respeak`, `/respeak:init`, `/respeak:report`, `/respeak:off`, `/respeak:on`, `/respeak:include`, `/respeak:audit` | Working |
 | Hooks: SessionStart lexicon status (off by default), PostToolUse style gate (opt-in), Stop narrative nudge (off by default) | Working |
 | Statusline script | Working |
 | Measure and verify tools, with their suites | Working |
 | Headless renderer: `respeak-render.sh` wraps `claude -p` | Working |
 | Configuration resolver: `respeak-config.sh resolve\|explain\|gate\|validate` | Working |
 
-Not yet built. The first two items are shorthand governance, and
-[`NICE_TO_HAVE.md`](/NICE_TO_HAVE.md) holds their plan.
+Not yet built. [`NICE_TO_HAVE.md`](/NICE_TO_HAVE.md) holds what is left of
+shorthand governance.
 
-- The register marker, reserved metawords, readback and decompress triggers: the config no longer declares them
-- The audit's decoding: `respeak-lexicon.py due` names the audit's sample, and no step yet gives it to a fresh agent
 - `respeak compile`: the corpus as a Vale style package
 - A display-only translation hook
 
@@ -347,7 +347,7 @@ assets/icon.svg            the project icon
 plugin/                    the plugin, self-contained: what an install copies
 plugin/.claude-plugin/     manifest + userConfig
 plugin/agents/respeak.md   the translator
-plugin/skills/             respeak, init, off, on, report, include
+plugin/skills/             respeak, init, off, on, report, include, audit
 plugin/hooks/hooks.json    lexicon status, milestone narrative, style gate
 plugin/scripts/            resolver, measure, verify-edit, gate, render, check, doctor, include, lexicon
 plugin/config/             plugin defaults, the /respeak:init seed, the include template

@@ -27,9 +27,9 @@
 #                (entries below config's legibility_floor are rejected)
 #
 # Top-level `audited:` (YYYY-MM-DD, beside `version:`) is the date of the
-# last fresh-decoder audit; a person writes it, as `reviewed:`.
-# `scripts/respeak-lexicon.py due` reads both, and the clean uses, and
-# names the entries due to retire or for review and whether the audit is.
+# last fresh-decoder audit; `scripts/respeak-lexicon.py audit` writes it,
+# and a person writes `reviewed:`. Its `due` reads both, and the clean uses,
+# and names the entries due to retire or for review and whether the audit is.
 
 version: 0
 
