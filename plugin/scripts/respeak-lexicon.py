@@ -17,7 +17,9 @@ regular file: an untracked or ignored one is named on stderr and not read,
 and a tracked symlink, or a path that resolves outside R, is refused.
 Shorthand governance is project-only, so the user, userConfig, folder and
 local layers, the session and the environment never reach a key. R
-defaults to the current directory.
+defaults, in every verb, to the top of the git work tree holding the
+current directory (respeak-include.py's `git_root`), else the current
+directory.
 
 `check` holds the ratified entries, the ones the digest gives the swarm, to
 two keys: `shorthand.max_entries`, the cap on their count, and
@@ -34,7 +36,10 @@ UTC today, or RESPEAK_TODAY when set), `outcome` (clean | failure),
 `readback` (true with --readback), then `source` when given. It refuses a
 term the lexicon lacks or has retired, a bad date, and a root with no
 .claude/respeak/. It is the file's only writer; a reader skips a line that
-is not such a record and names it on stderr.
+is not such a record and names it on stderr. When it creates the file it
+also writes .claude/respeak/.gitattributes, `uses.jsonl merge=union`, if
+there is none, so two branches that each append merge with both lines; it
+never edits one that is there.
 
 `ratify` judges each `status: proposed` entry, in file order, by
 `shorthand.auto`: it is eligible when its clean uses reach `auto.uses`
@@ -94,6 +99,8 @@ SEED = os.path.join(PLUGIN_ROOT, "corpus", "lexicon.yaml")
 PROJECT_REL = os.path.join(".claude", "respeak", "config.yaml")
 LEXICON_REL = os.path.join(".claude", "respeak", "lexicon.yaml")
 USES_REL = os.path.join(".claude", "respeak", "uses.jsonl")
+ATTRIBUTES_REL = os.path.join(".claude", "respeak", ".gitattributes")
+ATTRIBUTES = b"uses.jsonl merge=union\n"
 STATUSES = ("proposed", "ratified", "retired")
 OUTCOMES = ("clean", "failure")
 METHODS = ("fresh-decoder",)
@@ -401,6 +408,23 @@ def today():
     return given
 
 
+def attributes(root):
+    """Write .claude/respeak/.gitattributes, uses.jsonl merge=union, when
+    there is none; one that is there, a symlink included, is never edited.
+    The use is recorded either way, so a failure is named, not fatal."""
+    try:
+        fd = os.open(os.path.join(root, ATTRIBUTES_REL), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError:
+        return
+    except OSError as e:
+        warn("cannot write %s: %s; the use is recorded" % (ATTRIBUTES_REL, e.strerror or e))
+        return
+    try:
+        os.write(fd, ATTRIBUTES)
+    finally:
+        os.close(fd)
+
+
 def use(root, term, outcome, readback, source):
     if not os.path.isdir(os.path.join(root, ".claude", "respeak")):
         raise Usage("no .claude/respeak/ under %s; /respeak:init creates it" % root)
@@ -414,6 +438,7 @@ def use(root, term, outcome, readback, source):
         rec["source"] = source
     line = (json.dumps(rec, ensure_ascii=False) + "\n").encode("utf-8")
     path = os.path.join(root, USES_REL)
+    creating = not os.path.lexists(path)
     try:
         fd = os.open(path, os.O_RDWR | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
                      0o644)
@@ -427,6 +452,8 @@ def use(root, term, outcome, readback, source):
             raise Usage("%s: a short write; the last line may be cut" % USES_REL)
     finally:
         os.close(fd)
+    if creating:
+        attributes(root)
     print("use: %s %s%s on %s, recorded in %s" % (term, outcome, " with readback" if readback else "",
                                                    rec["date"], USES_REL))
     return 0
@@ -554,6 +581,16 @@ def due(root):
 # main
 # --------------------------------------------------------------------------
 
+def default_root():
+    """The top of the git work tree holding the current directory, by
+    respeak-include.py's own `git_root`; outside one, the current directory."""
+    inc = load("respeak_include", INCLUDE)
+    try:
+        return inc.git_root(os.getcwd())
+    except inc.Usage:
+        return os.getcwd()
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="respeak-lexicon.py",
                                 description="The shorthand lexicon's static rules, its use "
@@ -568,11 +605,12 @@ def main(argv=None):
     v = sub.add_parser("ratify", help="judge each proposed entry by shorthand.auto; write nothing")
     d = sub.add_parser("due", help="the retire, review and audit clocks that are due; write nothing")
     for x in (s, u, v, d):
-        x.add_argument("--root", metavar="R", default=".",
-                       help="the project directory (default: the current one)")
+        x.add_argument("--root", metavar="R",
+                       help="the project directory (default: the top of the git work tree "
+                            "holding the current directory, else the current directory)")
     args = p.parse_args(argv)
     try:
-        root = os.path.realpath(args.root)
+        root = os.path.realpath(args.root if args.root is not None else default_root())
         if not os.path.isdir(root):
             raise Usage("not a directory: %s" % args.root)
         if args.verb == "use":

@@ -1,6 +1,7 @@
 """Tests for plugin/scripts/respeak-lexicon.py: the lexicon's static rules, its
 use record, the ratification verdict, and its clocks; and the writer's
-wiring, the translator's `uses:` line and the skill's step 6 that records it.
+wiring, the translator's `uses:` line and the skill's step 6 that records it;
+and the seams, the record's union merge and `--root`'s default, the git top.
 
 The script reads R/.claude/respeak/lexicon.yaml, else the plugin's seed, and
 `shorthand` from the plugin defaults with R/.claude/respeak/config.yaml over
@@ -35,6 +36,7 @@ PY_WRAPPER = os.path.join(PLUGIN, "scripts", "py")
 SHIPPED = os.path.join(PLUGIN, "config", "respeak.config.yaml")
 SEED_LINE = "lexicon: ok, 2 ratified of 150, the nearest two 6 apart (min 2)\n"
 USES_REL = os.path.join(".claude", "respeak", "uses.jsonl")
+LEXICON_REL = os.path.join(".claude", "respeak", "lexicon.yaml")
 
 _spec = importlib.util.spec_from_file_location("respeak_lexicon", SCRIPT)
 assert _spec is not None and _spec.loader is not None
@@ -813,6 +815,128 @@ class UseWiring(Case):
         r = self.p.run("use", "cfg", "--outcome", "clean", env=env, wrapper=True)
         self.assertRan(r, 2, "")
         self.assertIn("no .claude/respeak/", r.stderr)
+
+
+ATTRIBUTES_REL = os.path.join(".claude", "respeak", ".gitattributes")
+
+
+class UnionMerge(Case):
+    """`use`, creating uses.jsonl, writes .claude/respeak/.gitattributes
+    (`uses.jsonl merge=union`) when there is none: two branches that each
+    append merge with both lines."""
+
+    def setUp(self):
+        super().setUp()
+        self.env = dict(self.p.env, RESPEAK_TODAY="2026-10-16", GIT_AUTHOR_NAME="t",
+                        GIT_AUTHOR_EMAIL="t@example.invalid", GIT_COMMITTER_NAME="t",
+                        GIT_COMMITTER_EMAIL="t@example.invalid")
+
+    def git(self, *args):
+        return subprocess.run(["git", *args], cwd=self.p.dir, env=self.env, capture_output=True,
+                              text=True, stdin=subprocess.DEVNULL, timeout=60)
+
+    def commit(self, message):
+        self.assertEqual(self.git("add", "-A", ".claude").returncode, 0)
+        r = self.git("commit", "-q", "-m", message)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def use(self, term, source):
+        self.assertRan(self.p.run("use", term, "--outcome", "clean", "--source", source,
+                                  env=self.env), 0)
+
+    def branches(self, base, left, right):
+        """left and right, each off base with one use appended; then left merges right."""
+        for name, term in ((left, "cfg"), (right, "R1..R7")):
+            self.assertEqual(self.git("checkout", "-q", "-b", name, base).returncode, 0)
+            self.use(term, name)
+            self.commit(name)
+        self.assertEqual(self.git("checkout", "-q", left).returncode, 0)
+        return self.git("merge", "-q", "--no-edit", right)
+
+    def test_two_branches_merge_with_both_lines(self):
+        self.use("cfg", "main")
+        with open(os.path.join(self.p.dir, ATTRIBUTES_REL), "rb") as f:
+            self.assertEqual(f.read(), b"uses.jsonl merge=union\n")
+        self.commit("first use")
+        self.assertEqual(self.git("branch", "-M", "main").returncode, 0)
+        r = self.branches("main", "left", "right")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual([u["source"] for u in lex.uses(self.p.dir)], ["main", "left", "right"])
+        # the control: without the attribute the same appends conflict
+        self.assertEqual(self.git("checkout", "-q", "-b", "plain", "main").returncode, 0)
+        self.assertEqual(self.git("rm", "-q", ATTRIBUTES_REL).returncode, 0)
+        self.commit("no attributes")
+        r = self.branches("plain", "left2", "right2")
+        self.assertNotEqual(r.returncode, 0, "without merge=union the appends conflict")
+        self.git("merge", "--abort")
+
+    def test_one_that_is_there_is_never_edited(self):
+        attributes = os.path.join(self.p.dir, ATTRIBUTES_REL)
+        self.p.write(ATTRIBUTES_REL, "*.jsonl -diff\n")
+        self.use("cfg", "s")
+        with open(attributes) as f:
+            self.assertEqual(f.read(), "*.jsonl -diff\n")
+        # a symlink is not followed
+        os.remove(attributes)
+        os.remove(os.path.join(self.p.dir, USES_REL))
+        target = self.p.write("elsewhere", "")
+        os.symlink(target, attributes)
+        self.use("cfg", "s")
+        with open(target) as f:
+            self.assertEqual(f.read(), "")
+        # written only when use creates the record: a removed one stays removed
+        os.remove(attributes)
+        self.use("cfg", "s")
+        self.assertFalse(os.path.lexists(attributes))
+
+    def test_a_refusal_writes_neither(self):
+        r = self.p.run("use", "nope", "--outcome", "clean", env=self.env)
+        self.assertRan(r, 2, "")
+        self.assertEqual(os.listdir(self.p.respeak), [])
+
+
+class DefaultRoot(Case):
+    """With --root absent: the top of the git work tree holding the current
+    directory, else the current directory; in every verb."""
+
+    def bare(self, cwd, *args, env=None):
+        return subprocess.run([sys.executable, SCRIPT, *args], cwd=cwd, env=env or self.p.env,
+                              capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
+
+    def test_a_subdirectory_reads_the_project(self):
+        self.p.config("shorthand: {max_entries: 2}\n")
+        sub = os.path.join(self.p.dir, "docs", "deep")
+        os.makedirs(sub)
+        self.assertRan(self.bare(sub, "check"), 0,
+                       "lexicon: ok, 2 ratified of 2, the nearest two 6 apart (min 2)\n")
+        self.p.lexicon(entry("cfg"), entry("IU", "proposed"))
+        env = dict(self.p.env, RESPEAK_TODAY="2026-10-16")
+        r = self.bare(sub, "use", "IU", "--outcome", "clean", env=env)
+        self.assertRan(r, 0)
+        self.assertEqual([u["term"] for u in lex.uses(self.p.dir)], ["IU"])
+        self.assertFalse(os.path.lexists(os.path.join(sub, ".claude")))
+        self.assertRan(self.bare(sub, "ratify"), 0,
+                       "IU: not eligible: 0 of 5 clean uses with readback\n"
+                       "ratify: 1 proposed, 0 eligible; shorthand.ratification: human\n")
+        self.assertRan(self.bare(sub, "due", env=env), 0,
+                       "retire: cfg: no date\nreview: cfg: no date\n"
+                       "audit: due, never audited, every 30 days; fresh-decoder, sample: cfg\n"
+                       "due: 1 to retire, 1 to review, the audit due\n")
+
+    def test_outside_git_the_current_directory(self):
+        out = os.path.join(self.p.root, "outside")
+        os.makedirs(os.path.join(out, ".claude", "respeak"))
+        with open(os.path.join(out, LEXICON_REL), "w") as f:
+            f.write("entries:\n" + entry("IU") + entry("IV"))
+        env = dict(self.p.env, GIT_CEILING_DIRECTORIES=self.p.root, RESPEAK_TODAY="2026-10-16")
+        self.assertRan(self.bare(out, "check", env=env), 1,
+                       "too near: IU and IV, 1 apart (min 2)\n"
+                       "lexicon: 1 problem, 2 ratified of 150, the nearest two 1 apart (min 2)\n")
+        self.assertRan(self.bare(out, "use", "IU", "--outcome", "failure", env=env), 0)
+        self.assertEqual([u["term"] for u in lex.uses(out)], ["IU"])
+        # and --root, given, still wins
+        r = self.bare(out, "check", "--root", self.p.dir, env=env)
+        self.assertRan(r, 0, SEED_LINE)
 
 
 if __name__ == "__main__":
