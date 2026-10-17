@@ -712,7 +712,6 @@ class DueClocks(Case):
         os.remove(os.path.join(self.p.respeak, "config.yaml"))
         for head, entries, why in (
                 ("", dated("cfg", reviewed="soon"), "entries[0] (cfg): reviewed must be a YYYY-MM-DD date"),
-                ("", dated("cfg", status="proposed", reviewed="5"), "reviewed must be"),
                 ("", dated("cfg", reviewed="2026-10-01T10:00:00"), "reviewed must be"),
                 # an entry due ahead of the bad value: nothing printed before the refusal
                 ("audited: 2026/10/01\n", dated("cfg", ratified_by="human 2020-01-01"),
@@ -779,13 +778,15 @@ AGENT_MD = os.path.join(PLUGIN, "agents", "respeak.md")
 SKILL_MD = os.path.join(PLUGIN, "skills", "respeak", "SKILL.md")
 RENDER = os.path.join(PLUGIN, "scripts", "respeak-render.sh")
 USE_CALL = ('"${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py use \'<term>\' '
-            '--outcome <outcome> [--readback] --source "<source>" --root "${CLAUDE_PROJECT_DIR}"')
-USES_ITEM = re.compile(r"`([^`]+)` (clean|failure)( readback)?")
+            '--outcome <outcome> [--readback] [--for <class>] --source "<source>" '
+            '--root "${CLAUDE_PROJECT_DIR}"')
+USES_ITEM = re.compile(r"`([^`]+)` (clean|failure)( readback)?(?: for ([a-z0-9]+(?:-[a-z0-9]+)*))?")
 
 
 def parse_uses(line):
-    """The translator's `uses:` line as (term, outcome, readback) items, as
-    the skill's step 6 reads it; None for a line out of the shape."""
+    """The translator's `uses:` line as (term, outcome, readback, class)
+    items, as the skill's step 6 reads it; None for a line out of the
+    shape."""
     if not line.startswith("uses: "):
         return None
     body = line[len("uses: "):]
@@ -796,7 +797,7 @@ def parse_uses(line):
         m = USES_ITEM.fullmatch(part)
         if not m:
             return None
-        items.append((m.group(1), m.group(2), bool(m.group(3))))
+        items.append((m.group(1), m.group(2), bool(m.group(3)), m.group(4)))
     return items
 
 
@@ -821,7 +822,10 @@ class UseWiring(Case):
                       "then each lexicon term the source used, `` `<term>` clean `` or "
                       "`` `<term>` failure `` (used true to its definition, or not), plus "
                       "` readback` when its receiver used it back, joined by `; `; with none, "
-                      "`uses: none`. The caller records them; you run nothing.", flat(text))
+                      "`uses: none`. A use in an item of a class `shorthand.readback_required_for` "
+                      "lists is `clean` only with ` readback`, and its item adds ` for <class>`; "
+                      "without the readback, the narrative states that item in full, flagged "
+                      "`not read back`. The caller records them; you run nothing.", flat(text))
 
     def test_the_skill_text(self):
         text = read(SKILL_MD)
@@ -832,12 +836,15 @@ class UseWiring(Case):
                 "it is neither scanned nor relayed.")
         record = ("6. Record the uses, once, from the agent's first `uses:` line; "
                   "`uses: none` records nothing.")
+        flags = ("with `--readback` when the item holds ` readback`, `--for <class>` when it "
+                 "ends ` for <class>`")
         skip = ("A refusal naming `no .claude/respeak/` means the project keeps no use record: "
-                "skip the rest silently. Name any other refusal in one line after the narrative.")
-        for phrase in (ask, drop, record, USE_CALL, skip):
+                "skip the rest silently. Name any other refusal in one line after the narrative, "
+                "and relay there each `decompress:` line `use` prints.")
+        for phrase in (ask, drop, record, USE_CALL, flags, skip):
             self.assertIn(phrase, body)
         order = [body.index(p) for p in ("4. Delegate", ask, "5. Verify", drop, "respeak-measure.py",
-                                         record, USE_CALL, skip, "7. If the agent reports")]
+                                         record, USE_CALL, flags, skip, "7. If the agent reports")]
         self.assertEqual(order, sorted(order))
 
     def test_the_grant_admits_the_call(self):
@@ -851,7 +858,8 @@ class UseWiring(Case):
         for each in (call, measure):
             with self.subTest(call=each[:40]):
                 # the plugin root substituted as Claude Code does on load, the shell's words
-                argv = shlex.split(each.replace("[--readback]", "--readback").split(" <<")[0])
+                argv = shlex.split(each.replace("[--readback]", "--readback")
+                                   .replace("[--for <class>]", "--for x").split(" <<")[0])
                 command = " ".join(argv).replace("${CLAUDE_PLUGIN_ROOT}", "/p")
                 self.assertTrue(any(fnmatch.fnmatchcase(command, r.replace("${CLAUDE_PLUGIN_ROOT}", "/p"))
                                     for r in rules), (command, rules))
@@ -863,22 +871,25 @@ class UseWiring(Case):
     def test_a_line_in_the_shape_gives_its_records(self):
         self.p.lexicon(entry("cfg"), entry("R1..R7"), entry("2-lane", "proposed", 0.6))
         reply = ("\U0001f4e3 respeak · bluf\n\nThe narrative.\nlexicon: 0 proposals written\n"
-                 "uses: `cfg` clean readback; `2-lane` failure; `R1..R7` clean")
+                 "uses: `cfg` clean readback; `2-lane` failure; `R1..R7` clean; "
+                 "`cfg` clean readback for irreversible-actions")
         *narrative, last = reply.splitlines()
         self.assertNotIn("uses:", "\n".join(narrative), "the narrative scanned and relayed")
         items = parse_uses(last)
-        self.assertEqual(items, [("cfg", "clean", True), ("2-lane", "failure", False),
-                                 ("R1..R7", "clean", False)])
+        self.assertEqual(items, [("cfg", "clean", True, None), ("2-lane", "failure", False, None),
+                                 ("R1..R7", "clean", False, None),
+                                 ("cfg", "clean", True, "irreversible-actions")])
         env = dict(self.p.env, RESPEAK_TODAY="2026-10-16")
-        for term, outcome, readback in items:
+        for term, outcome, readback, cls in items:
             argv = (["use", term, "--outcome", outcome] + (["--readback"] if readback else [])
-                    + ["--source", "session s1"])
+                    + (["--for", cls] if cls else []) + ["--source", "session s1"])
             self.assertRan(self.p.run(*argv, env=env, wrapper=True), 0)
         rec = {"date": "2026-10-16", "source": "session s1"}
         self.assertEqual(lex.uses(self.p.dir), [
             dict(rec, term="cfg", outcome="clean", readback=True),
             dict(rec, term="2-lane", outcome="failure", readback=False),
-            dict(rec, term="R1..R7", outcome="clean", readback=False)])
+            dict(rec, term="R1..R7", outcome="clean", readback=False),
+            dict(rec, term="cfg", outcome="clean", readback=True, **{"for": "irreversible-actions"})])
         self.assertRan(self.p.run("ratify"), 0,
                        "2-lane: not eligible: 0 of 5 clean uses with readback; "
                        "1 fidelity failure, 0 allowed\n"
@@ -886,6 +897,8 @@ class UseWiring(Case):
         # none records nothing; a line out of the shape is not read
         self.assertEqual(parse_uses("uses: none"), [])
         for bad in ("uses: cfg clean", "uses: `cfg` fine", "uses: `cfg` clean, `R1..R7` clean",
+                    "uses: `cfg` clean for", "uses: `cfg` clean for Bad Class",
+                    "uses: `cfg` clean for x readback",
                     "lexicon: 0 proposals written", "uses: `a`b` clean", "uses: `x; y` clean",
                     "uses: `cfg` clean; `x; y` failure"):
             self.assertIsNone(parse_uses(bad), bad)
@@ -900,9 +913,9 @@ ATTRIBUTES_REL = os.path.join(".claude", "respeak", ".gitattributes")
 
 
 class UnionMerge(Case):
-    """`use`, creating uses.jsonl, writes .claude/respeak/.gitattributes
-    (`uses.jsonl merge=union`) when there is none: two branches that each
-    append merge with both lines."""
+    """`use` writes .claude/respeak/.gitattributes (`uses.jsonl merge=union`,
+    `audits.jsonl merge=union`) whenever there is none: two branches that
+    each append merge with both lines."""
 
     def setUp(self):
         super().setUp()
@@ -935,15 +948,16 @@ class UnionMerge(Case):
     def test_two_branches_merge_with_both_lines(self):
         self.use("cfg", "main")
         with open(os.path.join(self.p.dir, ATTRIBUTES_REL), "rb") as f:
-            self.assertEqual(f.read(), b"uses.jsonl merge=union\n")
+            self.assertEqual(f.read(), b"uses.jsonl merge=union\naudits.jsonl merge=union\n")
         self.commit("first use")
         self.assertEqual(self.git("branch", "-M", "main").returncode, 0)
         r = self.branches("main", "left", "right")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual([u["source"] for u in lex.uses(self.p.dir)], ["main", "left", "right"])
-        # the control: without the attribute the same appends conflict
+        # the control: without the attribute the same appends conflict (r18: `use` writes
+        # an absent file again, so the control keeps one without the line, never edited)
         self.assertEqual(self.git("checkout", "-q", "-b", "plain", "main").returncode, 0)
-        self.assertEqual(self.git("rm", "-q", ATTRIBUTES_REL).returncode, 0)
+        self.p.write(ATTRIBUTES_REL, "# no merge driver\n")
         self.commit("no attributes")
         r = self.branches("plain", "left2", "right2")
         self.assertNotEqual(r.returncode, 0, "without merge=union the appends conflict")
@@ -963,10 +977,11 @@ class UnionMerge(Case):
         self.use("cfg", "s")
         with open(target) as f:
             self.assertEqual(f.read(), "")
-        # written only when use creates the record: a removed one stays removed
+        # written whenever absent (r18): a removed one comes back beside an old record
         os.remove(attributes)
         self.use("cfg", "s")
-        self.assertFalse(os.path.lexists(attributes))
+        with open(attributes, "rb") as f:
+            self.assertEqual(f.read(), b"uses.jsonl merge=union\naudits.jsonl merge=union\n")
 
     def test_a_refusal_writes_neither(self):
         r = self.p.run("use", "nope", "--outcome", "clean", env=self.env)
@@ -1016,6 +1031,497 @@ class DefaultRoot(Case):
         # and --root, given, still wins
         r = self.bare(out, "check", "--root", self.p.dir, env=env)
         self.assertRan(r, 0, SEED_LINE)
+
+
+REPAIR = ("The repair channel: `shorthand.reserved_metawords` (CORRECTION, SAY-AGAIN, UNVERIFIED by "
+          "default) is the words of `never_compress`'s `reserved-metawords` class. Each passes "
+          "verbatim, never expanded, never proposed. After CORRECTION only the corrected claim "
+          "stands: render it, not the claim it replaces. SAY-AGAIN is an open question: list it "
+          "with the open questions. UNVERIFIED marks an unverified claim: flag it as rendering "
+          "step 5 says.")
+MARKER = ("When `shorthand.register_marker` is `required`, a narrative keeping a ratified term "
+          "unexpanded ends its marker line ` · shorthand`.")
+
+
+def key_comment(key):
+    """A shipped shorthand key's line, from the key, and its continuation
+    comment lines, without their `#`, flattened."""
+    lines = read(SHIPPED).splitlines()
+    i = next(n for n, l in enumerate(lines) if l.startswith("  %s:" % key))
+    out = [lines[i].strip()]
+    for l in lines[i + 1:]:
+        if not re.match(r"^ +# ", l):
+            break
+        out.append(l.strip()[2:])
+    return flat(" ".join(out))
+
+
+def shipped_shorthand():
+    with open(SHIPPED, encoding="utf-8") as f:
+        return lex.yaml.safe_load(f)["shorthand"]
+
+
+class ReservedWords(Case):
+    """shorthand.reserved_metawords, the repair channel: check holds each
+    ratified term min_token_edit_distance from each word, ratify each
+    proposed one; both check the key."""
+
+    def test_the_seed_is_ok(self):
+        words = shipped_shorthand()["reserved_metawords"]
+        self.assertEqual(words, ["CORRECTION", "SAY-AGAIN", "UNVERIFIED"])
+        self.assertRan(self.p.run("check"), 0, SEED_LINE)
+        near = min(lex.distance(t, w) for t in ("cfg", "R1..R7", "2-lane") for w in words)
+        self.assertGreaterEqual(near, 7)
+
+    def test_m_minus_1_is_a_problem_and_m_is_not(self):
+        self.p.lexicon(entry("CORRECTIO"), entry("cfg"))
+        near = lex.distance("CORRECTIO", "cfg")
+        self.assertRan(self.p.run("check"), 1,
+                       "reserved: CORRECTIO is 1 from CORRECTION (min 2)\n"
+                       "lexicon: 1 problem, 2 ratified of 150, the nearest two %d apart (min 2)\n"
+                       % near)
+        self.p.lexicon(entry("CORRECTI"), entry("say-agai"), entry("cfg"))
+        r = self.p.run("check")
+        self.assertRan(r, 1)
+        self.assertEqual(r.stdout.splitlines()[:-1], ["reserved: say-agai is 1 from SAY-AGAIN (min 2)"],
+                         "case-folded; CORRECTI, 2 from CORRECTION, stands")
+        self.p.config("shorthand: {min_token_edit_distance: 3}\n")
+        self.assertIn("reserved: CORRECTI is 2 from CORRECTION (min 3)\n", self.p.run("check").stdout)
+
+    def test_retired_and_proposed_terms_are_not_checked(self):
+        self.p.lexicon(entry("cfg"), entry("CORRECTIO", "retired"), entry("UNVERIFIE", "proposed"))
+        self.assertRan(self.p.run("check"), 0,
+                       "lexicon: ok, 1 ratified of 150, no two to compare (min 2)\n")
+
+    def test_ratify_names_the_reserved_word_after_the_distances(self):
+        self.p.lexicon(entry("unverifi"), entry("unverifid", "proposed"))
+        self.assertRan(self.p.run("ratify"), 0,
+                       "unverifid: not eligible: 0 of 5 clean uses with readback; "
+                       "1 apart from unverifi, min 2; 1 from the reserved UNVERIFIED, min 2\n"
+                       "ratify: 1 proposed, 0 eligible; shorthand.ratification: human\n")
+
+    def test_a_project_list(self):
+        self.p.config("shorthand: {reserved_metawords: [ROGER]}\n")
+        self.p.lexicon(entry("ROGR"), entry("CORRECTIO"))
+        r = self.p.run("check")
+        self.assertRan(r, 1)
+        self.assertEqual(r.stdout.splitlines()[0], "reserved: ROGR is 1 from ROGER (min 2)")
+
+    def test_a_bad_value_exits_2_in_check_and_ratify(self):
+        for value in ("CORRECTION", "[SAY AGAIN]", "['A;B']", "['']", "[1]", "{a: 1}",
+                      "['a$b']", "[\"it's\"]"):
+            self.p.config("shorthand: {reserved_metawords: %s}\n" % value)
+            for verb in ("check", "ratify"):
+                with self.subTest(value=value, verb=verb):
+                    r = self.p.run(verb)
+                    self.assertRan(r, 2, "")
+                    self.assertIn("shorthand.reserved_metawords must be a list of words", r.stderr)
+            # due reads it not, so does not check it
+            env = dict(self.p.env, RESPEAK_TODAY="2026-10-17")
+            self.assertRan(self.p.run("due", env=env), 0)
+
+    def test_the_texts(self):
+        self.assertIn(REPAIR, flat(read(AGENT_MD)))
+        text = read(SHIPPED)
+        self.assertIn("# reserved-metawords is the list shorthand.reserved_metawords names.", text)
+        self.assertIn("{ class: reserved-metawords,", text)
+        self.assertEqual(key_comment("reserved_metawords"),
+                         "reserved_metawords: [CORRECTION, SAY-AGAIN, UNVERIFIED] # "
+                         "[respeak-lexicon.py check, ratify] the repair channel, never_compress's "
+                         "reserved-metawords: words with no whitespace or shell character; a "
+                         "ratified term nearer one than min_token_edit_distance is a problem, a "
+                         "proposed one not eligible. [instruction-only] the agent passes each "
+                         "verbatim")
+
+
+class RegisterMarker(Case):
+    """shorthand.register_marker: the translator's ` · shorthand`; check
+    holds it to required or optional."""
+
+    def test_the_shipped_value_and_both_values_pass(self):
+        self.assertEqual(shipped_shorthand()["register_marker"], "required")
+        for value in ("required", "optional"):
+            with self.subTest(value=value):
+                self.p.config("shorthand: {register_marker: %s}\n" % value)
+                self.assertRan(self.p.run("check"), 0, SEED_LINE)
+
+    def test_a_bad_value_exits_2_in_check_alone(self):
+        for value in ('"~"', "always", "true", "[required]", "Required"):
+            self.p.config("shorthand: {register_marker: %s}\n" % value)
+            with self.subTest(value=value):
+                r = self.p.run("check")
+                self.assertRan(r, 2, "")
+                self.assertIn("shorthand.register_marker must be required or optional", r.stderr)
+                # ratify reads it not
+                self.assertRan(self.p.run("ratify"), 0)
+
+    def test_the_texts(self):
+        self.assertIn(MARKER, flat(read(AGENT_MD)))
+        self.assertEqual(key_comment("register_marker"),
+                         "register_marker: required # required | optional. [instruction-only] when "
+                         "required, a narrative keeping a ratified term unexpanded ends its marker "
+                         "line ` · shorthand`; [respeak-lexicon.py check] a value outside the two "
+                         "exits 2")
+
+
+DECOMPRESS_TEXT = ("Decompress, whatever `lexicon_access` says, in each case `shorthand.decompress_on` "
+                   "lists: every term when the narrative asks a person to decide or act "
+                   "(`escalation-to-human`), when the context is an incident (`incident`), or when "
+                   "no profile applied (`new-partner`); and a term a `decompress:` line names "
+                   "(`repeated-fidelity-failure`).")
+
+
+class ReadbackFor(Case):
+    """shorthand.readback_required_for, read and checked by `use` each call:
+    `--for CLASS` refuses a class not listed, or a clean use without
+    --readback; the record gains `for`."""
+
+    def setUp(self):
+        super().setUp()
+        self.env = dict(self.p.env, RESPEAK_TODAY="2026-10-17")
+
+    def use(self, *args):
+        return self.p.run("use", "cfg", *args, env=self.env)
+
+    def test_the_shipped_classes(self):
+        self.assertEqual(shipped_shorthand()["readback_required_for"],
+                         ["irreversible-actions", "security-findings", "escalations-to-human"])
+
+    def test_a_listed_class_with_readback_is_clean(self):
+        self.assertRan(self.use("--outcome", "clean", "--readback", "--for", "security-findings"), 0,
+                       "use: cfg clean with readback for security-findings on 2026-10-17, "
+                       "recorded in %s\n" % USES_REL)
+        self.assertRan(self.use("--outcome", "failure", "--for", "irreversible-actions"), 0)
+        self.assertEqual([(u["outcome"], u["readback"], u["for"]) for u in lex.uses(self.p.dir)],
+                         [("clean", True, "security-findings"),
+                          ("failure", False, "irreversible-actions")])
+        # without --for, no key
+        self.assertRan(self.use("--outcome", "clean"), 0)
+        self.assertNotIn("for", lex.uses(self.p.dir)[-1])
+
+    def test_clean_without_readback_or_an_unlisted_class_exits_2(self):
+        for args, why in ((("--outcome", "clean", "--for", "security-findings"),
+                           "a clean use for security-findings needs --readback"),
+                          (("--outcome", "clean", "--readback", "--for", "deploys"),
+                           "deploys is not in shorthand.readback_required_for"),
+                          (("--outcome", "failure", "--for", "incident"),
+                           "incident is not in shorthand.readback_required_for")):
+            with self.subTest(args=args):
+                r = self.use(*args)
+                self.assertRan(r, 2, "")
+                self.assertIn(why, r.stderr)
+        self.assertFalse(os.path.lexists(os.path.join(self.p.dir, USES_REL)), "nothing written")
+        # a project's own list
+        self.p.config("shorthand: {readback_required_for: [deploys]}\n")
+        self.assertRan(self.use("--outcome", "clean", "--readback", "--for", "deploys"), 0)
+
+    def test_a_bad_value_exits_2_each_call(self):
+        for value in ("irreversible-actions", "[Bad Slug]", "['']", "[1]", "[a--b]", "[-a]"):
+            with self.subTest(value=value):
+                self.p.config("shorthand: {readback_required_for: %s}\n" % value)
+                r = self.use("--outcome", "clean")
+                self.assertRan(r, 2, "")
+                self.assertIn("shorthand.readback_required_for must be a list of slugs", r.stderr)
+        # check and ratify read it not
+        self.assertRan(self.p.run("check"), 0, SEED_LINE)
+
+    def test_a_record_whose_for_is_not_a_string_is_skipped(self):
+        self.p.record("cfg")
+        with open(os.path.join(self.p.dir, USES_REL), "a") as f:
+            f.write(json.dumps({"term": "cfg", "date": "2026-10-16", "outcome": "clean",
+                                "readback": True, "for": 1}) + "\n")
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(len(lex.uses(self.p.dir)), 1)
+        self.assertIn("uses.jsonl:2: for is not a string; skipped", err.getvalue())
+
+
+class DecompressOn(Case):
+    """shorthand.decompress_on, read and checked by `use` each call; with
+    repeated-fidelity-failure, a term with 2 failure uses gets its
+    `decompress:` line. The translator expands every term in a listed case."""
+
+    def setUp(self):
+        super().setUp()
+        self.env = dict(self.p.env, RESPEAK_TODAY="2026-10-17")
+
+    def test_the_shipped_cases(self):
+        self.assertEqual(shipped_shorthand()["decompress_on"],
+                         ["escalation-to-human", "incident", "repeated-fidelity-failure",
+                          "new-partner"])
+
+    def test_two_failure_uses_name_the_term(self):
+        line = "decompress: cfg: %d failure uses (shorthand.decompress_on)\n"
+        r = self.p.run("use", "cfg", "--outcome", "failure", env=self.env)
+        self.assertRan(r, 0)
+        self.assertNotIn("decompress:", r.stdout)
+        r = self.p.run("use", "cfg", "--outcome", "failure", env=self.env)
+        self.assertRan(r, 0)
+        self.assertTrue(r.stdout.endswith(line % 2), r.stdout)
+        # a later use of the term, clean too, names it again; another term not
+        r = self.p.run("use", "cfg", "--outcome", "clean", env=self.env)
+        self.assertTrue(r.stdout.endswith(line % 2), r.stdout)
+        r = self.p.run("use", "R1..R7", "--outcome", "failure", env=self.env)
+        self.assertNotIn("decompress:", r.stdout)
+        # unlisted, no line
+        self.p.config("shorthand: {decompress_on: [incident, new-partner]}\n")
+        r = self.p.run("use", "cfg", "--outcome", "failure", env=self.env)
+        self.assertRan(r, 0)
+        self.assertNotIn("decompress:", r.stdout)
+
+    def test_a_bad_value_exits_2_each_call(self):
+        for value in ("incident", "[panic]", "[Incident]", "[1]", "{a: 1}"):
+            with self.subTest(value=value):
+                self.p.config("shorthand: {decompress_on: %s}\n" % value)
+                r = self.p.run("use", "cfg", "--outcome", "clean", env=self.env)
+                self.assertRan(r, 2, "")
+                self.assertIn("shorthand.decompress_on must be a list of escalation-to-human, "
+                              "incident, repeated-fidelity-failure, new-partner", r.stderr)
+        self.assertFalse(os.path.lexists(os.path.join(self.p.dir, USES_REL)), "nothing written")
+        self.assertRan(self.p.run("ratify"), 0)
+
+    def test_the_texts(self):
+        self.assertIn(DECOMPRESS_TEXT, flat(read(AGENT_MD)))
+        self.assertEqual(key_comment("decompress_on"),
+                         "decompress_on: [escalation-to-human, incident, repeated-fidelity-failure, "
+                         "new-partner] # [respeak-lexicon.py use] only these four, checked each call; "
+                         "with repeated-fidelity-failure, `use` names a term with 2 failure uses. "
+                         "[instruction-only] the agent expands every term in a listed case, whatever "
+                         "narrative.lexicon_access says")
+        self.assertEqual(key_comment("readback_required_for"),
+                         "readback_required_for: [irreversible-actions, security-findings, "
+                         "escalations-to-human] # [respeak-lexicon.py use] slugs, checked each call; "
+                         "`use --for CLASS` refuses a class not listed, or a clean use without "
+                         "--readback. [instruction-only] a use in an item of a listed class is clean "
+                         "only with readback, its item adding ` for <class>`")
+
+
+AUDIT_MD = os.path.join(PLUGIN, "skills", "audit", "SKILL.md")
+AUDITS_REL = os.path.join(".claude", "respeak", "audits.jsonl")
+AUDIT_LEX = ('version: 1\n# kept, byte for byte\nentries:\n'
+             '  - term: "cfg"\n    expansion: "configuration"\n    status: ratified\n'
+             '    ratified_by: human 2026-08-31\n'
+             '  - term: "R1..R7"\n    expansion: "research dimension 1-7"\n    status: ratified\n'
+             '    ratified_by: human 2026-08-31\n'
+             '  - term: "IU"\n    expansion: "in use"\n    status: proposed\n')
+UNION = b"uses.jsonl merge=union\naudits.jsonl merge=union\n"
+
+
+class DecoderAudit(Case):
+    """`audit` reads a fresh decoder's `<term>: <decoding>` lines for today's
+    sample, appends audits.jsonl and sets the lexicon's `audited:`; and
+    the skill /respeak:audit that feeds it."""
+
+    def setUp(self):
+        super().setUp()
+        self.lex = self.p.write(LEXICON_REL, AUDIT_LEX)
+
+    def audit(self, text, day="2026-10-17", root=None):
+        env = dict(self.p.env, RESPEAK_TODAY=day)
+        return subprocess.run([sys.executable, SCRIPT, "audit", "--root", root or self.p.dir],
+                              input=text, env=env, cwd=self.p.root, capture_output=True,
+                              text=True, timeout=60)
+
+    def audits(self):
+        with open(os.path.join(self.p.dir, AUDITS_REL), encoding="utf-8") as f:
+            return [json.loads(l) for l in f]
+
+    def lexicon_bytes(self):
+        with open(self.lex, "rb") as f:
+            return f.read()
+
+    def test_decoded_missed_and_the_writes(self):
+        r = self.audit("cfg: configuration\nR1..R7: rules 1 through 7\n")
+        self.assertRan(r, 0, 'audit: cfg: decoded\naudit: R1..R7: missed, read as "rules 1 through 7"\n'
+                             "audit: 1 of 2 decoded, audited 2026-10-17\n")
+        rec = {"date": "2026-10-17", "method": "fresh-decoder"}
+        self.assertEqual(self.audits(), [
+            dict(rec, term="cfg", decoding="configuration", decoded=True),
+            dict(rec, term="R1..R7", decoding="rules 1 through 7", decoded=False)])
+        self.assertEqual(list(self.audits()[0]), ["term", "date", "method", "decoding", "decoded"])
+        self.assertFalse(os.path.lexists(os.path.join(self.p.dir, USES_REL)), "a decoding is no use")
+        self.assertEqual(self.lexicon_bytes(),
+                         AUDIT_LEX.replace("version: 1\n", "version: 1\naudited: 2026-10-17\n").encode())
+        self.assertEqual(lex.lexicon_file(self.p.dir)[0]["audited"], datetime.date(2026, 10, 17))
+        with open(os.path.join(self.p.dir, ATTRIBUTES_REL), "rb") as f:
+            self.assertEqual(f.read(), UNION)
+        r = self.p.run("due", env=dict(self.p.env, RESPEAK_TODAY="2026-10-17"))
+        self.assertRan(r, 0)
+        self.assertIn("audit: not due until 2026-11-16", r.stdout.splitlines())
+        # a later audit replaces the line and appends; the brief's other reading decodes
+        r = self.audit("R1..R7: Research dimensions 1 to 7\ncfg: config file\n", day="2026-11-20")
+        self.assertRan(r, 0)
+        self.assertEqual(r.stdout.splitlines(), ["audit: cfg: missed, read as \"config file\"",
+                                                 "audit: R1..R7: decoded",
+                                                 "audit: 1 of 2 decoded, audited 2026-11-20"])
+        self.assertEqual(len(self.audits()), 4)
+        self.assertEqual(self.lexicon_bytes(),
+                         AUDIT_LEX.replace("version: 1\n", "version: 1\naudited: 2026-11-20\n").encode())
+
+    def test_the_rule(self):
+        for expansion, decoding, ok in (("configuration", "Configuration!", True),
+                                        ("research dimension 1-7", "research dimensions 1 to 7", True),
+                                        ("research dimension 1-7", "rules 1 through 7", False),
+                                        ("two-lane architecture", "the 2 lane arch", False),
+                                        ("two-lane architecture", "two lanes, architectures", True),
+                                        ("configuration", "", False)):
+            with self.subTest(decoding=decoding):
+                self.assertEqual(lex.decodes(expansion, decoding), ok)
+
+    def test_a_term_with_no_line_is_missed_and_nothing_decoded_exits_0(self):
+        r = self.audit("cfg: a cat\n")
+        self.assertRan(r, 0, 'audit: cfg: missed, read as "a cat"\naudit: R1..R7: missed, read as ""\n'
+                             "audit: 0 of 2 decoded, audited 2026-10-17\n")
+
+    def test_an_empty_decoding_is_missed_not_refused(self):
+        # F1: `cfg: ` and a bare `cfg:` are empty decodings, scored and recorded; a term with
+        # a colon of its own still splits at `: `; a line with no colon stays refused
+        for text, reading in (("cfg: \nR1..R7: research dimensions 1 to 7\n", "research dimensions 1 to 7"),
+                              ("R1..R7:research dimension 1 7\ncfg:\n", "research dimension 1 7")):
+            with self.subTest(text=text):
+                os.remove(self.lex)
+                self.p.write(LEXICON_REL, AUDIT_LEX)
+                before = len(self.audits()) if os.path.exists(os.path.join(self.p.dir, AUDITS_REL)) else 0
+                r = self.audit(text)
+                self.assertRan(r, 0)
+                self.assertEqual(r.stdout.splitlines()[:2], ['audit: cfg: missed, read as ""',
+                                                             "audit: R1..R7: decoded"])
+                self.assertEqual([(a["term"], a["decoding"], a["decoded"])
+                                  for a in self.audits()[before:]],
+                                 [("cfg", "", False), ("R1..R7", reading, True)])
+        self.p.write(LEXICON_REL, AUDIT_LEX.replace('"cfg"', '"c:fg"'))
+        r = self.audit("c:fg: configuration\nR1..R7:\n")
+        self.assertRan(r, 0)
+        self.assertEqual(r.stdout.splitlines()[:2], ["audit: c:fg: decoded",
+                                                     'audit: R1..R7: missed, read as ""'])
+        r = self.audit("cfg configuration\n")
+        self.assertRan(r, 2, "")
+        self.assertIn("stdin line 1 is not `<term>: <decoding>`", r.stderr)
+
+    def test_a_failure_before_the_stamp_writes_nothing(self):
+        # F2: the stamp (a rename in .claude/respeak/) goes first, the records after, so a
+        # directory that refuses the rename leaves neither, a writable record there included
+        record = self.p.write(AUDITS_REL, "")
+        os.chmod(self.p.respeak, 0o555)
+        self.addCleanup(os.chmod, self.p.respeak, 0o755)
+        before = self.lexicon_bytes()
+        r = self.audit("cfg: configuration\n")
+        self.assertRan(r, 2, "")
+        with open(record, "rb") as f:
+            self.assertEqual(f.read(), b"", "no record")
+        self.assertEqual(self.lexicon_bytes(), before, "no stamp")
+        help_text = " ".join(self.p.run("audit", "--help").stdout.split())
+        self.assertIn("a failure between the two leaves the stamp set and no records", help_text)
+        self.assertIn("A failure between the two leaves the stamp set and no records",
+                      flat(read(AUDIT_MD)))
+
+    def test_inserted_before_entries_without_version_and_a_line_replaced(self):
+        text = AUDIT_LEX.replace("version: 1\n", "")
+        self.p.write(LEXICON_REL, text)
+        self.assertRan(self.audit("cfg: configuration\n"), 0)
+        self.assertEqual(self.lexicon_bytes(),
+                         text.replace("entries:\n", "audited: 2026-10-17\nentries:\n").encode())
+        text = AUDIT_LEX.replace("version: 1\n", "version: 1\naudited: 2026-01-01 # old\n")
+        self.p.write(LEXICON_REL, text)
+        self.assertRan(self.audit("cfg: configuration\n"), 0)
+        self.assertEqual(self.lexicon_bytes(),
+                         text.replace("audited: 2026-01-01 # old", "audited: 2026-10-17").encode())
+
+    def test_refusals_exit_2_and_write_nothing(self):
+        sample = "today's sample (cfg, R1..R7)"
+        for text, why in (("IU: in use\n", "not in %s: IU" % sample),
+                          ("cfg: configuration\nnope: x\nIU: y\n", "not in %s: nope, IU" % sample),
+                          ("cfg: configuration\ncfg: again\n", "cfg twice"),
+                          ("cfg configuration\n", "stdin line 1 is not `<term>: <decoding>`")):
+            with self.subTest(text=text):
+                before = self.p.tree()
+                r = self.audit(text)
+                self.assertRan(r, 2, "")
+                self.assertIn(why, r.stderr)
+                self.assertEqual(self.p.tree(), before)
+        # the sample is today's pick: with sample 1, the other term is refused
+        self.p.config("shorthand: {legibility_audit: {sample: 1}}\n")
+        chosen = lex.pick(["cfg", "R1..R7"], 1, "2026-10-17")
+        other = ({"cfg", "R1..R7"} - set(chosen)).pop()
+        r = self.audit("%s: x\n" % other)
+        self.assertRan(r, 2, "")
+        self.assertIn("not in today's sample (%s): %s" % (chosen[0], other), r.stderr)
+
+    def test_never_the_seed_nor_a_symlink(self):
+        os.remove(self.lex)
+        r = self.audit("cfg: configuration\n")
+        self.assertRan(r, 2, "")
+        self.assertIn("never the seed", r.stderr)
+        target = self.p.write("elsewhere.yaml", AUDIT_LEX)
+        os.symlink(target, self.lex)
+        r = self.audit("cfg: configuration\n")
+        self.assertRan(r, 2, "")
+        self.assertIn("lexicon.yaml is a symlink", r.stderr)
+        os.remove(self.lex)
+        self.p.write(LEXICON_REL, AUDIT_LEX)
+        os.symlink(target, os.path.join(self.p.dir, AUDITS_REL))
+        before = self.p.tree()
+        r = self.audit("cfg: configuration\n")
+        self.assertRan(r, 2, "")
+        self.assertIn("audits.jsonl is a symlink", r.stderr)
+        self.assertEqual(self.p.tree(), before)
+
+    def test_the_skill(self):
+        text = read(AUDIT_MD)
+        front, body = text.split("\n---\n", 1)
+        self.assertIn("disable-model-invocation: true", front.splitlines())
+        self.assertIn("allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/py respeak-lexicon.py *)",
+                      front.splitlines())
+        body = flat(body)
+        due = ('"${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py due '
+               '--root "${CLAUDE_PROJECT_DIR}"')
+        stop = "Stop unless a line begins `audit: due`"
+        agent = "a fresh `general-purpose` agent"
+        prompt = '"Read no file. Write `<term>: <meaning>` for each"'
+        fresh = ("It counts as fresh though it loads the project's CLAUDE.md, a lexicon digest "
+                 "that file imports included")
+        call = ('"${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py audit '
+                '--root "${CLAUDE_PROJECT_DIR}" <<\'RESPEAK_EOF\'')
+        order = [body.index(p) for p in (due, stop, agent, prompt, fresh, call)]
+        self.assertEqual(order, sorted(order))
+        rule = "/p/scripts/py respeak-lexicon.py *"
+        for each in (due, call):
+            argv = shlex.split(each.split(" <<")[0])
+            self.assertTrue(fnmatch.fnmatchcase(" ".join(argv).replace("${CLAUDE_PLUGIN_ROOT}", "/p"),
+                                                rule), each)
+
+
+class R17Seams(Case):
+    """r17's three seams: an empty --root is refused; .gitattributes is
+    written whenever absent; `due` reads `reviewed:` on ratified entries
+    only."""
+
+    def test_an_empty_root_exits_2_in_every_verb(self):
+        for argv in (["check"], ["use", "cfg", "--outcome", "clean"], ["ratify"], ["due"], ["audit"]):
+            with self.subTest(verb=argv[0]):
+                r = subprocess.run([sys.executable, SCRIPT, *argv, "--root", ""], cwd=self.p.dir,
+                                   env=self.p.env, capture_output=True, text=True, input="",
+                                   timeout=60)
+                self.assertRan(r, 2, "")
+                self.assertIn("--root is empty; refused", r.stderr)
+        self.assertEqual(os.listdir(self.p.respeak), [])
+
+    def test_gitattributes_whenever_absent(self):
+        # a 0.9.0 project: a record and no .gitattributes
+        self.p.record("cfg")
+        env = dict(self.p.env, RESPEAK_TODAY="2026-10-17")
+        self.assertRan(self.p.run("use", "cfg", "--outcome", "clean", env=env), 0)
+        with open(os.path.join(self.p.dir, ATTRIBUTES_REL), "rb") as f:
+            self.assertEqual(f.read(), UNION)
+
+    def test_due_reads_reviewed_on_ratified_entries_only(self):
+        env = dict(self.p.env, RESPEAK_TODAY="2026-10-17")
+        self.p.write(LEXICON_REL, "entries:\n" + dated("cfg", status="proposed", reviewed="soon")
+                     + dated("IU", status="retired", reviewed="5") + dated("R1..R7"))
+        self.assertRan(self.p.run("due", env=env), 0)
+        self.p.write(LEXICON_REL, "entries:\n" + dated("cfg", reviewed="soon"))
+        r = self.p.run("due", env=env)
+        self.assertRan(r, 2, "")
+        self.assertIn("entries[0] (cfg): reviewed must be a YYYY-MM-DD date", r.stderr)
 
 
 if __name__ == "__main__":

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """respeak-lexicon: the shorthand lexicon's static rules, its use record, the
-ratification verdict, and its clocks.
+ratification verdict, its clocks, and its audit.
 
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py check [--root R]
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py use TERM --outcome clean|failure \
-        [--readback] [--source S] [--root R]
+        [--readback] [--for CLASS] [--source S] [--root R]
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py ratify [--root R]
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py due [--root R]
+    "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py audit [--root R] < LINES
 
 Inputs, and nothing else: R/.claude/respeak/lexicon.yaml, else the plugin's
 seed corpus/lexicon.yaml; and `shorthand` from the plugin defaults
@@ -19,13 +20,16 @@ Shorthand governance is project-only, so the user, userConfig, folder and
 local layers, the session and the environment never reach a key. R
 defaults, in every verb, to the top of the git work tree holding the
 current directory (respeak-include.py's `git_root`), else the current
-directory.
+directory; an empty --root is refused.
 
 `check` holds the ratified entries, the ones the digest gives the swarm, to
-two keys: `shorthand.max_entries`, the cap on their count, and
+three keys: `shorthand.max_entries`, the cap on their count,
 `shorthand.min_token_edit_distance`, the least Levenshtein distance between
-any two of their terms, case-folded. It prints a line per problem, then
-one summary line:
+any two of their terms, case-folded, and between each term and each word of
+`shorthand.reserved_metawords`, the repair channel's words (CORRECTION,
+SAY-AGAIN, UNVERIFIED), which no term may come near. It also checks
+`shorthand.register_marker`, `required` or `optional`, which the translator
+reads. It prints a line per problem, then one summary line:
 
     lexicon: ok, 2 ratified of 150, the nearest two 6 apart (min 2)
 
@@ -33,20 +37,27 @@ one summary line:
 committed beside the lexicon: one JSON object a line, appended with one
 O_APPEND write and never rewritten, its keys `term`, `date` (YYYY-MM-DD,
 UTC today, or RESPEAK_TODAY when set), `outcome` (clean | failure),
-`readback` (true with --readback), then `source` when given. It refuses a
-term the lexicon lacks or has retired, a bad date, and a root with no
-.claude/respeak/. It is the file's only writer; a reader skips a line that
-is not such a record and names it on stderr. When it creates the file it
-also writes .claude/respeak/.gitattributes, `uses.jsonl merge=union`, if
-there is none, so two branches that each append merge with both lines; it
-never edits one that is there.
+`readback` (true with --readback), then `for` and `source` when given. It
+refuses a term the lexicon lacks or has retired, a bad date, and a root
+with no .claude/respeak/. It reads and checks two keys each call:
+`shorthand.readback_required_for`, the classes whose items a term serves
+cleanly only when read back, so `--for CLASS` refuses a class it does not
+list, or a clean use without --readback; and `shorthand.decompress_on`,
+the cases the translator writes every term out in full: with
+`repeated-fidelity-failure` listed, a term with 2 or more failure uses
+gets one more line, `decompress: <term>: <n> failure uses
+(shorthand.decompress_on)`. It is the file's only writer; a reader skips a line that
+is not such a record and names it on stderr. It also writes
+.claude/respeak/.gitattributes, `uses.jsonl merge=union` and
+`audits.jsonl merge=union`, whenever there is none, so two branches that
+each append merge with both lines; it never edits one that is there.
 
 `ratify` judges each `status: proposed` entry, in file order, by
 `shorthand.auto`: it is eligible when its clean uses reach `auto.uses`
 (with `auto.readback_evidence` true, only a clean use with readback
 counts), its failure uses stay within `auto.fidelity_failures_allowed`, it
-is `min_token_edit_distance` or more from each ratified term, fewer than
-`max_entries` are ratified, and its legibility meets `legibility_floor`.
+is `min_token_edit_distance` or more from each ratified term and each
+reserved metaword, fewer than `max_entries` are ratified, and its legibility meets `legibility_floor`.
 A line an entry, `<term>: eligible` or `<term>: not eligible: ` and the
 reasons in that order, joined by `; `; then
 `ratify: P proposed, E eligible; shorthand.ratification: V`. It writes
@@ -58,21 +69,39 @@ whole days from its date reach its key. Retire, by
 `shorthand.retire_after_days_unused`: from the later of the entry's
 newest clean use and its `ratified_by` date. Review, by
 `shorthand.review_cadence_days`: from its `reviewed:` date, else
-`ratified_by`. A line an entry and clock
+`ratified_by`; `reviewed:` is read on ratified entries only. A line an entry and clock
 that is due, in file order, and `<term>: no date` for one with no date to
 start from. Then the audit, by `shorthand.legibility_audit`, from the
 lexicon's top-level `audited:` date: when due, the `sample` ratified terms
 ranked by the sha256 of `<today> <term>`, printed in file order. A date is
-a YAML date or a YYYY-MM-DD string; a person writes `reviewed:` and
-`audited:`. Last, one summary line:
+a YAML date or a YYYY-MM-DD string; a person writes `reviewed:`, and
+`audit` writes `audited:`. Last, one summary line:
 
     due: 0 to retire, 0 to review, the audit due
 
 It writes nothing.
 
-Exit: check 0 ok, 1 a problem; use 0 recorded; ratify and due 0 whatever
-the verdicts; each 2 on a usage error, a bad key value, a lexicon that
-cannot be read as entries, or a refusal, with one line and no traceback.
+`audit` records a fresh decoder's reading of today's sample: `<term>:
+<decoding>` lines on stdin, one a sampled term. It refuses a root with no
+R/.claude/respeak/lexicon.yaml (never the seed), a symlinked lexicon or
+record, a term outside today's `due` sample (named), and a term twice. A
+term is decoded when each [a-z0-9] run of its `expansion`, case-folded,
+begins a word of the decoding; a sampled term with no line, or `<term>:`
+with nothing after it, is missed. A
+line a term, `audit: <term>: decoded` or `audit: <term>: missed, read as
+"<decoding>"`, then `audit: D of N decoded, audited <date>`. It writes, in
+order: the lexicon's top-level `audited: <date>`, replacing that line or
+inserted after `version:` (else before `entries:`), every other byte kept,
+by rename; then a record a term to R/.claude/respeak/audits.jsonl (`term`,
+`date`, `method`, `decoding`, `decoded`), in one O_APPEND write, never to
+uses.jsonl, since a decoding is no use; then .gitattributes as `use` does.
+A refusal writes nothing; a failure between the two leaves the stamp set
+and no records.
+
+Exit: check 0 ok, 1 a problem; use 0 recorded; ratify, due and audit 0
+whatever the verdicts; each 2 on a usage error, a bad key value, a lexicon
+that cannot be read as entries, or a refusal, with one line and no
+traceback.
 """
 import argparse
 import datetime
@@ -102,11 +131,17 @@ SEED = os.path.join(PLUGIN_ROOT, "corpus", "lexicon.yaml")
 PROJECT_REL = os.path.join(".claude", "respeak", "config.yaml")
 LEXICON_REL = os.path.join(".claude", "respeak", "lexicon.yaml")
 USES_REL = os.path.join(".claude", "respeak", "uses.jsonl")
+AUDITS_REL = os.path.join(".claude", "respeak", "audits.jsonl")
 ATTRIBUTES_REL = os.path.join(".claude", "respeak", ".gitattributes")
-ATTRIBUTES = b"uses.jsonl merge=union\n"
+ATTRIBUTES = b"uses.jsonl merge=union\naudits.jsonl merge=union\n"
+WORD_RE = re.compile(r"[a-z0-9]+")
 STATUSES = ("proposed", "ratified", "retired")
 OUTCOMES = ("clean", "failure")
 METHODS = ("fresh-decoder",)
+MARKERS = ("required", "optional")
+DECOMPRESS = ("escalation-to-human", "incident", "repeated-fidelity-failure", "new-partner")
+REPEATED = 2  # failure uses that make a term's fidelity failure repeated
+SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 SHELL_CHARS = "`$;|&<>\"'\\"  # with whitespace: a term the skill passes to `use` never holds one
 
@@ -190,8 +225,9 @@ def fraction(value):
             and 0 <= value <= 1)
 
 
-def governance(root):
-    """The keys this script reads, each checked; a bad value is a Usage."""
+def governance(root, marker=False):
+    """The keys check and ratify read, each checked; a bad value is a Usage.
+    With marker, check's own: `register_marker`, which the translator reads."""
     sh = shorthand(root)
     gov = {}
     for key in ("max_entries", "min_token_edit_distance"):
@@ -218,6 +254,18 @@ def governance(root):
     if sh.get("ratification") not in ("human", "auto"):
         raise Usage("shorthand.ratification must be human or auto, not %r" % (sh.get("ratification"),))
     gov["ratification"] = sh["ratification"]
+    words = sh.get("reserved_metawords")
+    if not isinstance(words, list) or not all(
+            isinstance(w, str) and w and not any(c in SHELL_CHARS or c.isspace() for c in w)
+            for w in words):
+        raise Usage("shorthand.reserved_metawords must be a list of words with no whitespace "
+                    "or shell character, not %r" % (words,))
+    gov["reserved_metawords"] = words
+    if marker:
+        if sh.get("register_marker") not in MARKERS:
+            raise Usage("shorthand.register_marker must be required or optional, not %r"
+                        % (sh.get("register_marker"),))
+        gov["register_marker"] = sh["register_marker"]
     return gov
 
 
@@ -286,6 +334,8 @@ def why_not_use(rec):
         return "outcome is not clean or failure"
     if not isinstance(rec.get("readback"), bool):
         return "readback is not true or false"
+    if "for" in rec and not isinstance(rec["for"], str):
+        return "for is not a string"
     if "source" in rec and not isinstance(rec["source"], str):
         return "source is not a string"
     return None
@@ -342,7 +392,7 @@ def ratified(entries):
 
 
 def check(root):
-    gov = governance(root)
+    gov = governance(root, marker=True)
     terms = ratified(lexicon(root))
     cap, least = gov["max_entries"], gov["min_token_edit_distance"]
     problems = []
@@ -355,6 +405,11 @@ def check(root):
             nearest = d if nearest is None else min(nearest, d)
             if d < least:
                 problems.append("too near: %s and %s, %d apart (min %d)" % (a, b, d, least))
+    for a in terms:
+        for w in gov["reserved_metawords"]:
+            d = distance(a, w)
+            if d < least:
+                problems.append("reserved: %s is %d from %s (min %d)" % (a, d, w, least))
     for p in problems:
         print(p)
     n = len(problems)
@@ -392,6 +447,10 @@ def ratify(root):
             d = distance(e["term"], t)
             if d < least:
                 reasons.append("%d apart from %s, min %d" % (d, t, least))
+        for w in gov["reserved_metawords"]:
+            d = distance(e["term"], w)
+            if d < least:
+                reasons.append("%d from the reserved %s, min %d" % (d, w, least))
         if len(terms) >= cap:
             reasons.append("the cap, %d ratified" % len(terms))
         leg = e.get("legibility")
@@ -420,13 +479,13 @@ def today():
 def attributes(root):
     """Write .claude/respeak/.gitattributes, uses.jsonl merge=union, when
     there is none; one that is there, a symlink included, is never edited.
-    The use is recorded either way, so a failure is named, not fatal."""
+    The record is written either way, so a failure is named, not fatal."""
     try:
         fd = os.open(os.path.join(root, ATTRIBUTES_REL), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
     except FileExistsError:
         return
     except OSError as e:
-        warn("cannot write %s: %s; the use is recorded" % (ATTRIBUTES_REL, e.strerror or e))
+        warn("cannot write %s: %s; the record is written" % (ATTRIBUTES_REL, e.strerror or e))
         return
     try:
         os.write(fd, ATTRIBUTES)
@@ -434,37 +493,66 @@ def attributes(root):
         os.close(fd)
 
 
-def use(root, term, outcome, readback, source):
+def triggers(root):
+    """The two keys `use` reads, each checked; a bad value is a Usage."""
+    sh = shorthand(root)
+    classes = sh.get("readback_required_for")
+    if not isinstance(classes, list) or not all(isinstance(c, str) and SLUG_RE.match(c)
+                                                for c in classes):
+        raise Usage("shorthand.readback_required_for must be a list of slugs, not %r" % (classes,))
+    cases = sh.get("decompress_on")
+    if not isinstance(cases, list) or not all(isinstance(c, str) and c in DECOMPRESS for c in cases):
+        raise Usage("shorthand.decompress_on must be a list of %s, not %r"
+                    % (", ".join(DECOMPRESS), cases))
+    return classes, cases
+
+
+def append(root, rel, data):
+    """Append data to R/rel in one O_APPEND write, never through a symlink."""
+    try:
+        fd = os.open(os.path.join(root, rel),
+                     os.O_RDWR | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o644)
+    except OSError as e:
+        raise Usage("cannot append to %s: %s" % (rel, e.strerror or e))
+    try:
+        size = os.fstat(fd).st_size
+        if size and os.pread(fd, 1, size - 1) != b"\n":
+            data = b"\n" + data  # a last line cut short stays its own line
+        if os.write(fd, data) != len(data):
+            raise Usage("%s: a short write; the last line may be cut" % rel)
+    finally:
+        os.close(fd)
+
+
+def use(root, term, outcome, readback, source, for_=None):
     if not os.path.isdir(os.path.join(root, ".claude", "respeak")):
         raise Usage("no .claude/respeak/ under %s; /respeak:init creates it" % root)
+    classes, cases = triggers(root)
+    if for_ is not None:
+        if for_ not in classes:
+            raise Usage("%s is not in shorthand.readback_required_for; refused" % for_)
+        if outcome == "clean" and not readback:
+            raise Usage("a clean use for %s needs --readback (shorthand.readback_required_for); "
+                        "refused" % for_)
     statuses = [e["status"] for e in lexicon(root) if e["term"] == term]
     if not statuses:
         raise Usage("%s is not a lexicon term; refused" % term)
     if all(s == "retired" for s in statuses):
         raise Usage("%s is retired; refused" % term)
     rec = {"term": term, "date": today(), "outcome": outcome, "readback": readback}
+    if for_ is not None:
+        rec["for"] = for_
     if source is not None:
         rec["source"] = source
-    line = (json.dumps(rec, ensure_ascii=False) + "\n").encode("utf-8")
-    path = os.path.join(root, USES_REL)
-    creating = not os.path.lexists(path)
-    try:
-        fd = os.open(path, os.O_RDWR | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
-                     0o644)
-    except OSError as e:
-        raise Usage("cannot append to %s: %s" % (USES_REL, e.strerror or e))
-    try:
-        size = os.fstat(fd).st_size
-        if size and os.pread(fd, 1, size - 1) != b"\n":
-            line = b"\n" + line  # a last line cut short stays its own line
-        if os.write(fd, line) != len(line):
-            raise Usage("%s: a short write; the last line may be cut" % USES_REL)
-    finally:
-        os.close(fd)
-    if creating:
-        attributes(root)
-    print("use: %s %s%s on %s, recorded in %s" % (term, outcome, " with readback" if readback else "",
-                                                   rec["date"], USES_REL))
+    append(root, USES_REL, (json.dumps(rec, ensure_ascii=False) + "\n").encode("utf-8"))
+    attributes(root)
+    print("use: %s %s%s%s on %s, recorded in %s"
+          % (term, outcome, " with readback" if readback else "",
+             " for %s" % for_ if for_ is not None else "", rec["date"], USES_REL))
+    if "repeated-fidelity-failure" in cases:
+        n = sum(1 for r in uses(root) if r["term"] == term and r["outcome"] == "failure")
+        if n >= REPEATED:
+            print("decompress: %s: %d failure uses (shorthand.decompress_on)" % (term, n))
     return 0
 
 
@@ -548,10 +636,10 @@ def due(root):
             newest[r["term"]] = max(day, newest.get(r["term"], day))
     lines, count = [], {"retire": 0, "review": 0}
     for i, e in enumerate(entries):
+        if e["status"] != "ratified":
+            continue  # a proposed or retired entry's `reviewed:` is read by nothing
         reviewed = written_date(e.get("reviewed"), "%s: entries[%d] (%s)" % (shown, i, e["term"]),
                                 "reviewed")
-        if e["status"] != "ratified":
-            continue
         on, used = ratified_on(e), newest.get(e["term"])
         if used is not None and (on is None or used >= on):
             unused_since, unused_kind = used, "clean use"
@@ -592,6 +680,131 @@ def due(root):
 
 
 # --------------------------------------------------------------------------
+# the audit
+# --------------------------------------------------------------------------
+
+def decodes(expansion, decoding):
+    """Whether each [a-z0-9] run of the expansion, case-folded, begins a
+    word of the decoding."""
+    words = WORD_RE.findall(decoding.casefold())
+    return all(any(w.startswith(run) for w in words) for run in WORD_RE.findall(expansion.casefold()))
+
+
+def top(key, line):
+    """Whether line is the top-level `key:` line."""
+    return re.match(rb"^" + key + rb":(\s|$)", line) is not None
+
+
+def stamped(raw, day):
+    """The lexicon's bytes with its top-level `audited:` line set to day:
+    that line replaced, else one inserted after `version:`, else before
+    `entries:`; None when there is no place."""
+    lines = raw.splitlines(keepends=True)
+    new = b"audited: " + day.encode("ascii")
+    for i, l in enumerate(lines):
+        if top(b"audited", l):
+            lines[i] = new + l[len(l.rstrip(b"\r\n")):]
+            return b"".join(lines)
+    for key, after in ((b"version", 1), (b"entries", 0)):
+        for i, l in enumerate(lines):
+            if top(key, l):
+                end = l[len(l.rstrip(b"\r\n")):] or b"\n"
+                if after and not l.endswith(b"\n"):
+                    lines[i] = l + end
+                lines.insert(i + after, new + end)
+                return b"".join(lines)
+    return None
+
+
+def replace(path, data):
+    """Write data over path by a rename from a temp file beside it."""
+    mode = os.stat(path).st_mode & 0o7777
+    tmp = os.path.join(os.path.dirname(path), ".lexicon.yaml.audit-%d" % os.getpid())
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    try:
+        try:
+            if os.write(fd, data) != len(data):
+                raise Usage("%s: a short write; the lexicon is unchanged" % LEXICON_REL)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.lexists(tmp):
+            os.remove(tmp)
+        raise
+
+
+def audit(root, text):
+    audit_key = clocks(root)["legibility_audit"]
+    path = os.path.join(root, LEXICON_REL)
+    if os.path.islink(path):
+        raise Usage("%s is a symlink; refused" % LEXICON_REL)
+    if not os.path.isfile(path):
+        raise Usage("no %s under %s; the audit records a project's lexicon, never the seed"
+                    % (LEXICON_REL, root))
+    if os.path.islink(os.path.join(root, AUDITS_REL)):
+        raise Usage("%s is a symlink; refused" % AUDITS_REL)
+    data, shown = lexicon_file(root)
+    day = today()
+    sample = pick(ratified(data["entries"]), audit_key["sample"], day)
+    if not sample:
+        raise Usage("%s: no ratified term to audit" % shown)
+    expansion = {}
+    for e in data["entries"]:
+        if e["status"] == "ratified":
+            expansion.setdefault(e["term"], e.get("expansion"))
+    for term in sample:
+        x = expansion[term]
+        if not isinstance(x, str) or not WORD_RE.search(x.casefold()):
+            raise Usage("%s: %s has no expansion to decode against, %r; refused" % (shown, term, x))
+    given, outside = {}, []
+    for n, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        body = line.strip()  # split at `: `, else the first colon: `term:` is an empty decoding
+        term, sep, decoding = body.partition(": ") if ": " in body else body.partition(":")
+        if not sep or not term:
+            raise Usage("stdin line %d is not `<term>: <decoding>`; refused" % n)
+        if term in given:
+            raise Usage("%s twice; refused" % term)
+        given[term] = decoding.strip()
+        if term not in sample:
+            outside.append(term)
+    if outside:
+        raise Usage("not in today's sample (%s): %s; refused" % (", ".join(sample), ", ".join(outside)))
+    with open(path, "rb") as f:
+        raw = f.read()
+    new = stamped(raw, day)
+    if new is None:
+        raise Usage("%s: no top-level `version:` or `entries:` line to put `audited:` by; refused"
+                    % shown)
+    try:
+        after = yaml.safe_load(new.decode("utf-8"))
+    except (UnicodeDecodeError, yaml.YAMLError):
+        after = None
+    if (not isinstance(after, dict) or after.get("audited") != datetime.date.fromisoformat(day)
+            or after.get("entries") != data["entries"]):
+        raise Usage("%s: `audited: %s` cannot be written without changing the entries; refused"
+                    % (shown, day))
+    lines, records = [], []
+    for term in sample:
+        decoding = given.get(term, "")
+        ok = decodes(expansion[term], decoding)
+        records.append({"term": term, "date": day, "method": audit_key["method"],
+                        "decoding": decoding, "decoded": ok})
+        lines.append("audit: %s: %s" % (term, "decoded" if ok else 'missed, read as "%s"' % decoding))
+    replace(path, new)  # the stamp first: a failure before it writes nothing
+    append(root, AUDITS_REL, "".join(json.dumps(r, ensure_ascii=False) + "\n"
+                                     for r in records).encode("utf-8"))
+    attributes(root)
+    lines.append("audit: %d of %d decoded, audited %s"
+                 % (sum(r["decoded"] for r in records), len(records), day))
+    print("\n".join(lines))
+    return 0
+
+
+# --------------------------------------------------------------------------
 # main
 # --------------------------------------------------------------------------
 
@@ -608,31 +821,48 @@ def default_root():
 def main(argv=None):
     p = argparse.ArgumentParser(prog="respeak-lexicon.py",
                                 description="The shorthand lexicon's static rules, its use "
-                                            "record, the ratification verdict, and its clocks.")
-    sub = p.add_subparsers(dest="verb", required=True, metavar="{check,use,ratify,due}")
+                                            "record, the ratification verdict, its clocks, and "
+                                            "its audit.")
+    sub = p.add_subparsers(dest="verb", required=True, metavar="{check,use,ratify,due,audit}")
     s = sub.add_parser("check", help="hold the ratified entries to the cap and the edit distance")
     u = sub.add_parser("use", help="append one use of a term to .claude/respeak/uses.jsonl")
     u.add_argument("term", metavar="TERM")
     u.add_argument("--outcome", required=True, choices=OUTCOMES)
     u.add_argument("--readback", action="store_true", help="the reader read the term back")
+    u.add_argument("--for", dest="for_", metavar="CLASS",
+                   help="the item's class, one shorthand.readback_required_for lists")
     u.add_argument("--source", metavar="S", help="where the use was seen")
     v = sub.add_parser("ratify", help="judge each proposed entry by shorthand.auto; write nothing")
     d = sub.add_parser("due", help="the retire, review and audit clocks that are due; write nothing")
-    for x in (s, u, v, d):
+    a = sub.add_parser("audit", help="record a fresh decoder's `<term>: <decoding>` lines, on "
+                                     "stdin, for today's sample; write `audited:`, then "
+                                     "audits.jsonl")
+    a.description = ("Write the lexicon's `audited:` line, then the records in audits.jsonl; "
+                     "a refusal writes nothing, and a failure between the two leaves the stamp "
+                     "set and no records.")
+    for x in (s, u, v, d, a):
         x.add_argument("--root", metavar="R",
                        help="the project directory (default: the top of the git work tree "
                             "holding the current directory, else the current directory)")
     args = p.parse_args(argv)
     try:
+        if args.root == "":
+            raise Usage("--root is empty; refused (leave it out for the git top)")
         root = os.path.realpath(args.root if args.root is not None else default_root())
         if not os.path.isdir(root):
             raise Usage("not a directory: %s" % args.root)
         if args.verb == "use":
-            return use(root, args.term, args.outcome, args.readback, args.source)
+            return use(root, args.term, args.outcome, args.readback, args.source, args.for_)
         if args.verb == "ratify":
             return ratify(root)
         if args.verb == "due":
             return due(root)
+        if args.verb == "audit":
+            try:
+                text = sys.stdin.read()
+            except UnicodeDecodeError as e:
+                raise Usage("stdin is not UTF-8: %s" % e)
+            return audit(root, text)
         return check(root)
     except Usage as e:
         warn(str(e))

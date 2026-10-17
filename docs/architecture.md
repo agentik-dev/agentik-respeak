@@ -204,15 +204,21 @@ re-read on 2026-10-14; re-open that page before relying on them.
   repair metawords (CORRECTION, SAY-AGAIN, UNVERIFIED), in-band register
   marking, readback for high-stakes messages, and monthly fresh-decoder
   audits — because drift happens *inside* governed systems and the most
-  fluent agents deviate most (ICAO's lesson). Built in 0.9.0 and 0.10.0, in
+  fluent agents deviate most (ICAO's lesson). Built in 0.9.0 to 0.11.0, in
   `plugin/scripts/respeak-lexicon.py`: `check` holds the ratified terms to
-  the cap (150) and the edit distance (2). `use` records each use in
+  the cap (150) and the edit distance (2), from each other and from the
+  reserved metawords, which the translator passes verbatim; it checks the
+  register marker, which the translator adds as ` · shorthand`. `use` records each use in
   `.claude/respeak/uses.jsonl`, which merges by union; the translator names
   the uses and the respeak skill records them. `ratify` says which
   proposals the readback usage evidence makes eligible. `due` names the
   entries due to retire (180 days unused) or for review (90 days), and
   whether the fresh-decoder audit (30 days) is due, with its sample. Both
-  write nothing. The rest is planned in `NICE_TO_HAVE.md`.
+  write nothing. `use --for CLASS` holds the readback classes, and names a
+  term to decompress after 2 failure uses. `audit` records a fresh agent's
+  reading of the sample in `.claude/respeak/audits.jsonl` and writes
+  `audited:`; `/respeak:audit` runs it. The swarm's side of the register
+  is planned in `NICE_TO_HAVE.md`.
 - **Capture, don't suppress.** FAIR 2017 suppressed emergent codewords by
   rewarding English; respeak's differentiator is capturing them into the
   lexicon as proposals, with the translator as the standing reward channel.
