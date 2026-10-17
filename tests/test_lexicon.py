@@ -280,6 +280,42 @@ class LexiconCheck(Case):
                            env=self.p.env, capture_output=True, text=True, timeout=60)
         self.assertRan(r, 2, "")
 
+    def test_a_term_with_a_shell_character_is_refused(self):
+        # r17 fix round 1, F3: the skill's step 6 puts a term on a command line
+        env = dict(self.p.env, RESPEAK_TODAY="2026-10-16")
+        for term in ("$HOME", "a`b", "x;y", "a|b", "a&b", "a<b", "a>b", 'a\\"b', "it's", "a\\\\b",
+                     "x y", "a\\tb", "a\\nb"):
+            self.p.write(".claude/respeak/lexicon.yaml",
+                         'entries:\n  - {term: "cfg", status: ratified}\n'
+                         '  - {term: "%s", status: proposed}\n' % term)
+            for argv in (["check"], ["ratify"], ["due"], ["use", "cfg", "--outcome", "clean"]):
+                with self.subTest(term=term, verb=argv[0]):
+                    r = self.p.run(*argv, env=env)
+                    self.assertRan(r, 2, "")
+                    self.assertIn("entries[1]", r.stderr)
+                    self.assertIn("a term holds a shell character", r.stderr)
+                    self.assertEqual(len(r.stderr.splitlines()), 1)
+        self.assertFalse(os.path.lexists(os.path.join(self.p.dir, USES_REL)))
+        # the seed's terms, and the shapes the tests use, stay valid
+        self.p.lexicon(entry("cfg"), entry("R1..R7"), entry("2-lane", "proposed"), entry("IU"))
+        self.assertRan(self.p.run("check"), 0)
+
+    def test_no_verb_writes_bytecode(self):
+        # r17 fix round 1, F4: the modules the script loads leave no __pycache__
+        copy = os.path.join(self.p.root, "plugin")
+        shutil.copytree(PLUGIN, copy, ignore=shutil.ignore_patterns("__pycache__"))
+        env = dict(self.p.env, RESPEAK_TODAY="2026-10-16")
+        for k in ("PYTHONDONTWRITEBYTECODE", "PYTHONPYCACHEPREFIX"):
+            env.pop(k, None)
+        script = os.path.join(copy, "scripts", "respeak-lexicon.py")
+        for argv in (["check"], ["ratify"], ["due"], ["use", "cfg", "--outcome", "clean"]):
+            with self.subTest(verb=argv[0]):
+                r = subprocess.run([sys.executable, script, *argv, "--root", self.p.dir], env=env,
+                                   capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=60)
+                self.assertRan(r, 0)
+                caches = [d for d, _, _ in os.walk(copy) if os.path.basename(d) == "__pycache__"]
+                self.assertEqual(caches, [])
+
 
 
 def utc_today():
@@ -692,6 +728,44 @@ class DueClocks(Case):
         r = self.due("2026-10-32", code=2, stdout="")
         self.assertIn("RESPEAK_TODAY", r.stderr)
 
+    def test_a_date_past_9999_exits_2(self):
+        # r17 fix round 1, F1: the next audit date past date.max is a refusal, not a traceback
+        for audited, cadence in (("9999-12-31", 30), ("2026-10-01", 3000000),
+                                 ("2026-10-01", 999999999)):
+            with self.subTest(audited=audited, cadence=cadence):
+                self.lexicon(dated("cfg"), audited=audited)
+                self.p.config("shorthand: {legibility_audit: {cadence_days: %d}}\n" % cadence)
+                r = self.due("2026-10-16", code=2, stdout="")
+                self.assertEqual(r.stderr.splitlines(), [
+                    "respeak-lexicon: %s: audited %s plus shorthand.legibility_audit.cadence_days "
+                    "%d is past 9999-12-31" % (LEXICON_REL, audited, cadence)])
+        self.p.config("shorthand: {legibility_audit: {cadence_days: 30}}\n")
+        self.lexicon(dated("cfg"), audited="9999-11-30")
+        self.due("2026-10-16", stdout=("audit: not due until 9999-12-30\n"
+                                       "due: 0 to retire, 0 to review, the audit not due until 9999-12-30\n"))
+
+    def test_a_clean_use_before_ratification_does_not_restart_the_clock(self):
+        # r17 fix round 1, F2: the later of the newest clean use and the ratified date
+        self.lexicon(dated("nw", ratified_by="human 2026-10-15"))
+        self.p.config("shorthand: {retire_after_days_unused: 10, review_cadence_days: 900}\n")
+        self.p.record("nw", date="2026-01-02")
+        self.due("2026-10-24", stdout=QUIET)
+        self.due("2026-10-25", stdout=(
+            "retire: nw: unused since 2026-10-15 (ratified), 10 days, after 10 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 1 to retire, 0 to review, the audit not due until 2099-01-31\n"))
+        self.p.record("nw", date="2026-10-15")   # a use on the day it is ratified is a use
+        self.due("2026-10-25", stdout=(
+            "retire: nw: unused since 2026-10-15 (clean use), 10 days, after 10 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 1 to retire, 0 to review, the audit not due until 2099-01-31\n"))
+        self.p.record("nw", date="2026-10-20")
+        self.due("2026-10-29", stdout=QUIET)
+        self.due("2026-10-30", stdout=(
+            "retire: nw: unused since 2026-10-20 (clean use), 10 days, after 10 days\n"
+            "audit: not due until 2099-01-31\n"
+            "due: 1 to retire, 0 to review, the audit not due until 2099-01-31\n"))
+
     def test_nothing_written(self):
         self.lexicon(dated("cfg"), audited=None)
         self.p.record("cfg", date="2026-10-02")
@@ -704,7 +778,7 @@ class DueClocks(Case):
 AGENT_MD = os.path.join(PLUGIN, "agents", "respeak.md")
 SKILL_MD = os.path.join(PLUGIN, "skills", "respeak", "SKILL.md")
 RENDER = os.path.join(PLUGIN, "scripts", "respeak-render.sh")
-USE_CALL = ('"${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py use "<term>" '
+USE_CALL = ('"${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py use \'<term>\' '
             '--outcome <outcome> [--readback] --source "<source>" --root "${CLAUDE_PROJECT_DIR}"')
 USES_ITEM = re.compile(r"`([^`]+)` (clean|failure)( readback)?")
 
@@ -812,7 +886,8 @@ class UseWiring(Case):
         # none records nothing; a line out of the shape is not read
         self.assertEqual(parse_uses("uses: none"), [])
         for bad in ("uses: cfg clean", "uses: `cfg` fine", "uses: `cfg` clean, `R1..R7` clean",
-                    "lexicon: 0 proposals written"):
+                    "lexicon: 0 proposals written", "uses: `a`b` clean", "uses: `x; y` clean",
+                    "uses: `cfg` clean; `x; y` failure"):
             self.assertIsNone(parse_uses(bad), bad)
         # the refusal the skill skips on is the one `use` gives
         shutil.rmtree(self.p.respeak)

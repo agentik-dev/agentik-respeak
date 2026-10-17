@@ -6,8 +6,8 @@ Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
 - `plugin/scripts/respeak-lexicon.py due` reads the lexicon's three clocks
   and writes nothing. An entry is due to retire after 180 days with no
-  clean use, counted from its newest clean use, else its `ratified_by`
-  date. It is due for review every 90 days from its `reviewed:` date, else
+  clean use, counted from the later of its newest clean use and its
+  `ratified_by` date. It is due for review every 90 days from its `reviewed:` date, else
   `ratified_by`. The fresh-decoder audit falls due 30 days after the
   lexicon's top-level `audited:` date and names a sample of 10 ratified
   terms, chosen by the day. A person writes `reviewed:` and `audited:`.
@@ -27,7 +27,12 @@ Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
   holds the current directory, else the current directory. Run from a
   subdirectory, it reads the project's files, not the seed.
 - A lexicon date out of range, such as `2026-13-01`, exits 2 with one line
-  instead of a traceback.
+  instead of a traceback, as does an audit date past 9999-12-31.
+- Every verb refuses a lexicon term that holds whitespace or a shell
+  character (`` ` `` `$` `;` `|` `&` `<` `>` `"` `'` `\`), since the skill
+  passes each term to `use` on a command line, in single quotes. The seed's
+  terms pass.
+- `respeak-lexicon.py` writes no `__pycache__` for the modules it loads.
 
 ## 0.9.0 (2026-10-16)
 

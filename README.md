@@ -311,7 +311,7 @@ proposal is only a proposal until a human ratifies it.
 
 ## Status
 
-Status: version `0.10.0`, rendered `2026-10-16`, `327` unittest cases and `10` bash suites.
+Status: version `0.10.0`, rendered `2026-10-16`, `331` unittest cases and `10` bash suites.
 
 | Surface | State |
 |---|---|

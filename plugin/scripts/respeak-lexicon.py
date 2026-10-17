@@ -55,9 +55,10 @@ nothing: a person ratifies.
 `due` reads three clocks over the ratified entries, by today (UTC, or
 RESPEAK_TODAY), and only it checks their keys. A clock is due when the
 whole days from its date reach its key. Retire, by
-`shorthand.retire_after_days_unused`: from the entry's newest clean use,
-else its `ratified_by` date. Review, by `shorthand.review_cadence_days`:
-from its `reviewed:` date, else `ratified_by`. A line an entry and clock
+`shorthand.retire_after_days_unused`: from the later of the entry's
+newest clean use and its `ratified_by` date. Review, by
+`shorthand.review_cadence_days`: from its `reviewed:` date, else
+`ratified_by`. A line an entry and clock
 that is due, in file order, and `<term>: no date` for one with no date to
 start from. Then the audit, by `shorthand.legibility_audit`, from the
 lexicon's top-level `audited:` date: when due, the `sample` ratified terms
@@ -82,6 +83,8 @@ import os
 import re
 import sys
 
+sys.dont_write_bytecode = True  # the verbs write nothing, a __pycache__ included
+
 try:
     import yaml
 except ImportError:
@@ -105,6 +108,7 @@ STATUSES = ("proposed", "ratified", "retired")
 OUTCOMES = ("clean", "failure")
 METHODS = ("fresh-decoder",)
 DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+SHELL_CHARS = "`$;|&<>\"'\\"  # with whitespace: a term the skill passes to `use` never holds one
 
 
 class Usage(Exception):
@@ -223,7 +227,9 @@ def lexicon_path(root):
 
 
 def lexicon(root):
-    """The entries, each a mapping with a string term and a known status."""
+    """The entries, each a mapping with a string term and a known status.
+    A term holds no whitespace and no shell character, since the respeak
+    skill passes it to `use` on a command line."""
     return lexicon_file(root)[0]["entries"]
 
 
@@ -245,6 +251,9 @@ def lexicon_file(root):
             raise Usage("%s is not a mapping" % where)
         if not isinstance(e.get("term"), str) or not e["term"].strip():
             raise Usage("%s: term must be a non-empty string, not %r" % (where, e.get("term")))
+        bad = next((c for c in e["term"] if c in SHELL_CHARS or c.isspace()), None)
+        if bad is not None:
+            raise Usage("%s (%r): a term holds a shell character, %r; refused" % (where, e["term"], bad))
         if e.get("status") not in STATUSES:
             raise Usage("%s (%s): status must be one of %s, not %r"
                         % (where, e["term"], ", ".join(STATUSES), e.get("status")))
@@ -543,10 +552,13 @@ def due(root):
                                 "reviewed")
         if e["status"] != "ratified":
             continue
-        on = ratified_on(e)
+        on, used = ratified_on(e), newest.get(e["term"])
+        if used is not None and (on is None or used >= on):
+            unused_since, unused_kind = used, "clean use"
+        else:  # a clean use before ratification does not restart the clock
+            unused_since, unused_kind = on, "ratified"
         for verb, n, since, kind, word, per in (
-                ("retire", retire_n, newest.get(e["term"]) or on,
-                 "clean use" if e["term"] in newest else "ratified", "unused", "after"),
+                ("retire", retire_n, unused_since, unused_kind, "unused", "after"),
                 ("review", review_n, reviewed or on,
                  "reviewed" if reviewed else "ratified", "unreviewed", "every")):
             if since is None:
@@ -560,7 +572,11 @@ def due(root):
             count[verb] += 1
     every = audit["cadence_days"]
     if audited is not None and (now - audited).days < every:
-        state = "not due until %s" % (audited + datetime.timedelta(days=every)).isoformat()
+        try:
+            state = "not due until %s" % (audited + datetime.timedelta(days=every)).isoformat()
+        except (OverflowError, ValueError):
+            raise Usage("%s: audited %s plus shorthand.legibility_audit.cadence_days %d is past %s"
+                        % (shown, audited.isoformat(), every, datetime.date.max.isoformat()))
         lines.append("audit: %s" % state)
     else:
         state = "due"

@@ -11,7 +11,8 @@
 #   - entries are never deleted, only status: retired
 #
 # Entry fields:
-#   term:        the shorthand token(s) as they appear in swarm traffic
+#   term:        the shorthand token as it appears in swarm traffic; no
+#                whitespace and none of ` $ ; | & < > " ' \ (the scripts refuse it)
 #   expansion:   the full-English rendering the translator substitutes
 #   definition:  precise meaning, including what it does NOT cover
 #   scope:       where it is valid (global | repo | session)
