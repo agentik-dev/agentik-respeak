@@ -712,7 +712,6 @@ class DueClocks(Case):
         os.remove(os.path.join(self.p.respeak, "config.yaml"))
         for head, entries, why in (
                 ("", dated("cfg", reviewed="soon"), "entries[0] (cfg): reviewed must be a YYYY-MM-DD date"),
-                ("", dated("cfg", status="proposed", reviewed="5"), "reviewed must be"),
                 ("", dated("cfg", reviewed="2026-10-01T10:00:00"), "reviewed must be"),
                 # an entry due ahead of the bad value: nothing printed before the refusal
                 ("audited: 2026/10/01\n", dated("cfg", ratified_by="human 2020-01-01"),
@@ -914,9 +913,9 @@ ATTRIBUTES_REL = os.path.join(".claude", "respeak", ".gitattributes")
 
 
 class UnionMerge(Case):
-    """`use`, creating uses.jsonl, writes .claude/respeak/.gitattributes
-    (`uses.jsonl merge=union`) when there is none: two branches that each
-    append merge with both lines."""
+    """`use` writes .claude/respeak/.gitattributes (`uses.jsonl merge=union`,
+    `audits.jsonl merge=union`) whenever there is none: two branches that
+    each append merge with both lines."""
 
     def setUp(self):
         super().setUp()
@@ -949,15 +948,16 @@ class UnionMerge(Case):
     def test_two_branches_merge_with_both_lines(self):
         self.use("cfg", "main")
         with open(os.path.join(self.p.dir, ATTRIBUTES_REL), "rb") as f:
-            self.assertEqual(f.read(), b"uses.jsonl merge=union\n")
+            self.assertEqual(f.read(), b"uses.jsonl merge=union\naudits.jsonl merge=union\n")
         self.commit("first use")
         self.assertEqual(self.git("branch", "-M", "main").returncode, 0)
         r = self.branches("main", "left", "right")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual([u["source"] for u in lex.uses(self.p.dir)], ["main", "left", "right"])
-        # the control: without the attribute the same appends conflict
+        # the control: without the attribute the same appends conflict (r18: `use` writes
+        # an absent file again, so the control keeps one without the line, never edited)
         self.assertEqual(self.git("checkout", "-q", "-b", "plain", "main").returncode, 0)
-        self.assertEqual(self.git("rm", "-q", ATTRIBUTES_REL).returncode, 0)
+        self.p.write(ATTRIBUTES_REL, "# no merge driver\n")
         self.commit("no attributes")
         r = self.branches("plain", "left2", "right2")
         self.assertNotEqual(r.returncode, 0, "without merge=union the appends conflict")
@@ -977,10 +977,11 @@ class UnionMerge(Case):
         self.use("cfg", "s")
         with open(target) as f:
             self.assertEqual(f.read(), "")
-        # written only when use creates the record: a removed one stays removed
+        # written whenever absent (r18): a removed one comes back beside an old record
         os.remove(attributes)
         self.use("cfg", "s")
-        self.assertFalse(os.path.lexists(attributes))
+        with open(attributes, "rb") as f:
+            self.assertEqual(f.read(), b"uses.jsonl merge=union\naudits.jsonl merge=union\n")
 
     def test_a_refusal_writes_neither(self):
         r = self.p.run("use", "nope", "--outcome", "clean", env=self.env)
@@ -1292,6 +1293,193 @@ class DecompressOn(Case):
                          "`use --for CLASS` refuses a class not listed, or a clean use without "
                          "--readback. [instruction-only] a use in an item of a listed class is clean "
                          "only with readback, its item adding ` for <class>`")
+
+
+AUDIT_MD = os.path.join(PLUGIN, "skills", "audit", "SKILL.md")
+AUDITS_REL = os.path.join(".claude", "respeak", "audits.jsonl")
+AUDIT_LEX = ('version: 1\n# kept, byte for byte\nentries:\n'
+             '  - term: "cfg"\n    expansion: "configuration"\n    status: ratified\n'
+             '    ratified_by: human 2026-08-31\n'
+             '  - term: "R1..R7"\n    expansion: "research dimension 1-7"\n    status: ratified\n'
+             '    ratified_by: human 2026-08-31\n'
+             '  - term: "IU"\n    expansion: "in use"\n    status: proposed\n')
+UNION = b"uses.jsonl merge=union\naudits.jsonl merge=union\n"
+
+
+class DecoderAudit(Case):
+    """`audit` reads a fresh decoder's `<term>: <decoding>` lines for today's
+    sample, appends audits.jsonl and sets the lexicon's `audited:`; and
+    the skill /respeak:audit that feeds it."""
+
+    def setUp(self):
+        super().setUp()
+        self.lex = self.p.write(LEXICON_REL, AUDIT_LEX)
+
+    def audit(self, text, day="2026-10-17", root=None):
+        env = dict(self.p.env, RESPEAK_TODAY=day)
+        return subprocess.run([sys.executable, SCRIPT, "audit", "--root", root or self.p.dir],
+                              input=text, env=env, cwd=self.p.root, capture_output=True,
+                              text=True, timeout=60)
+
+    def audits(self):
+        with open(os.path.join(self.p.dir, AUDITS_REL), encoding="utf-8") as f:
+            return [json.loads(l) for l in f]
+
+    def lexicon_bytes(self):
+        with open(self.lex, "rb") as f:
+            return f.read()
+
+    def test_decoded_missed_and_the_writes(self):
+        r = self.audit("cfg: configuration\nR1..R7: rules 1 through 7\n")
+        self.assertRan(r, 0, 'audit: cfg: decoded\naudit: R1..R7: missed, read as "rules 1 through 7"\n'
+                             "audit: 1 of 2 decoded, audited 2026-10-17\n")
+        rec = {"date": "2026-10-17", "method": "fresh-decoder"}
+        self.assertEqual(self.audits(), [
+            dict(rec, term="cfg", decoding="configuration", decoded=True),
+            dict(rec, term="R1..R7", decoding="rules 1 through 7", decoded=False)])
+        self.assertEqual(list(self.audits()[0]), ["term", "date", "method", "decoding", "decoded"])
+        self.assertFalse(os.path.lexists(os.path.join(self.p.dir, USES_REL)), "a decoding is no use")
+        self.assertEqual(self.lexicon_bytes(),
+                         AUDIT_LEX.replace("version: 1\n", "version: 1\naudited: 2026-10-17\n").encode())
+        self.assertEqual(lex.lexicon_file(self.p.dir)[0]["audited"], datetime.date(2026, 10, 17))
+        with open(os.path.join(self.p.dir, ATTRIBUTES_REL), "rb") as f:
+            self.assertEqual(f.read(), UNION)
+        r = self.p.run("due", env=dict(self.p.env, RESPEAK_TODAY="2026-10-17"))
+        self.assertRan(r, 0)
+        self.assertIn("audit: not due until 2026-11-16", r.stdout.splitlines())
+        # a later audit replaces the line and appends; the brief's other reading decodes
+        r = self.audit("R1..R7: Research dimensions 1 to 7\ncfg: config file\n", day="2026-11-20")
+        self.assertRan(r, 0)
+        self.assertEqual(r.stdout.splitlines(), ["audit: cfg: missed, read as \"config file\"",
+                                                 "audit: R1..R7: decoded",
+                                                 "audit: 1 of 2 decoded, audited 2026-11-20"])
+        self.assertEqual(len(self.audits()), 4)
+        self.assertEqual(self.lexicon_bytes(),
+                         AUDIT_LEX.replace("version: 1\n", "version: 1\naudited: 2026-11-20\n").encode())
+
+    def test_the_rule(self):
+        for expansion, decoding, ok in (("configuration", "Configuration!", True),
+                                        ("research dimension 1-7", "research dimensions 1 to 7", True),
+                                        ("research dimension 1-7", "rules 1 through 7", False),
+                                        ("two-lane architecture", "the 2 lane arch", False),
+                                        ("two-lane architecture", "two lanes, architectures", True),
+                                        ("configuration", "", False)):
+            with self.subTest(decoding=decoding):
+                self.assertEqual(lex.decodes(expansion, decoding), ok)
+
+    def test_a_term_with_no_line_is_missed_and_nothing_decoded_exits_0(self):
+        r = self.audit("cfg: a cat\n")
+        self.assertRan(r, 0, 'audit: cfg: missed, read as "a cat"\naudit: R1..R7: missed, read as ""\n'
+                             "audit: 0 of 2 decoded, audited 2026-10-17\n")
+
+    def test_inserted_before_entries_without_version_and_a_line_replaced(self):
+        text = AUDIT_LEX.replace("version: 1\n", "")
+        self.p.write(LEXICON_REL, text)
+        self.assertRan(self.audit("cfg: configuration\n"), 0)
+        self.assertEqual(self.lexicon_bytes(),
+                         text.replace("entries:\n", "audited: 2026-10-17\nentries:\n").encode())
+        text = AUDIT_LEX.replace("version: 1\n", "version: 1\naudited: 2026-01-01 # old\n")
+        self.p.write(LEXICON_REL, text)
+        self.assertRan(self.audit("cfg: configuration\n"), 0)
+        self.assertEqual(self.lexicon_bytes(),
+                         text.replace("audited: 2026-01-01 # old", "audited: 2026-10-17").encode())
+
+    def test_refusals_exit_2_and_write_nothing(self):
+        sample = "today's sample (cfg, R1..R7)"
+        for text, why in (("IU: in use\n", "not in %s: IU" % sample),
+                          ("cfg: configuration\nnope: x\nIU: y\n", "not in %s: nope, IU" % sample),
+                          ("cfg: configuration\ncfg: again\n", "cfg twice"),
+                          ("cfg configuration\n", "stdin line 1 is not `<term>: <decoding>`")):
+            with self.subTest(text=text):
+                before = self.p.tree()
+                r = self.audit(text)
+                self.assertRan(r, 2, "")
+                self.assertIn(why, r.stderr)
+                self.assertEqual(self.p.tree(), before)
+        # the sample is today's pick: with sample 1, the other term is refused
+        self.p.config("shorthand: {legibility_audit: {sample: 1}}\n")
+        chosen = lex.pick(["cfg", "R1..R7"], 1, "2026-10-17")
+        other = ({"cfg", "R1..R7"} - set(chosen)).pop()
+        r = self.audit("%s: x\n" % other)
+        self.assertRan(r, 2, "")
+        self.assertIn("not in today's sample (%s): %s" % (chosen[0], other), r.stderr)
+
+    def test_never_the_seed_nor_a_symlink(self):
+        os.remove(self.lex)
+        r = self.audit("cfg: configuration\n")
+        self.assertRan(r, 2, "")
+        self.assertIn("never the seed", r.stderr)
+        target = self.p.write("elsewhere.yaml", AUDIT_LEX)
+        os.symlink(target, self.lex)
+        r = self.audit("cfg: configuration\n")
+        self.assertRan(r, 2, "")
+        self.assertIn("lexicon.yaml is a symlink", r.stderr)
+        os.remove(self.lex)
+        self.p.write(LEXICON_REL, AUDIT_LEX)
+        os.symlink(target, os.path.join(self.p.dir, AUDITS_REL))
+        before = self.p.tree()
+        r = self.audit("cfg: configuration\n")
+        self.assertRan(r, 2, "")
+        self.assertIn("audits.jsonl is a symlink", r.stderr)
+        self.assertEqual(self.p.tree(), before)
+
+    def test_the_skill(self):
+        text = read(AUDIT_MD)
+        front, body = text.split("\n---\n", 1)
+        self.assertIn("disable-model-invocation: true", front.splitlines())
+        self.assertIn("allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/py respeak-lexicon.py *)",
+                      front.splitlines())
+        body = flat(body)
+        due = ('"${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py due '
+               '--root "${CLAUDE_PROJECT_DIR}"')
+        stop = "Stop unless a line begins `audit: due`"
+        agent = "a fresh `general-purpose` agent"
+        prompt = '"Read no file. Write `<term>: <meaning>` for each"'
+        fresh = ("It counts as fresh though it loads the project's CLAUDE.md, a lexicon digest "
+                 "that file imports included")
+        call = ('"${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py audit '
+                '--root "${CLAUDE_PROJECT_DIR}" <<\'RESPEAK_EOF\'')
+        order = [body.index(p) for p in (due, stop, agent, prompt, fresh, call)]
+        self.assertEqual(order, sorted(order))
+        rule = "/p/scripts/py respeak-lexicon.py *"
+        for each in (due, call):
+            argv = shlex.split(each.split(" <<")[0])
+            self.assertTrue(fnmatch.fnmatchcase(" ".join(argv).replace("${CLAUDE_PLUGIN_ROOT}", "/p"),
+                                                rule), each)
+
+
+class R17Seams(Case):
+    """r17's three seams: an empty --root is refused; .gitattributes is
+    written whenever absent; `due` reads `reviewed:` on ratified entries
+    only."""
+
+    def test_an_empty_root_exits_2_in_every_verb(self):
+        for argv in (["check"], ["use", "cfg", "--outcome", "clean"], ["ratify"], ["due"], ["audit"]):
+            with self.subTest(verb=argv[0]):
+                r = subprocess.run([sys.executable, SCRIPT, *argv, "--root", ""], cwd=self.p.dir,
+                                   env=self.p.env, capture_output=True, text=True, input="",
+                                   timeout=60)
+                self.assertRan(r, 2, "")
+                self.assertIn("--root is empty; refused", r.stderr)
+        self.assertEqual(os.listdir(self.p.respeak), [])
+
+    def test_gitattributes_whenever_absent(self):
+        # a 0.9.0 project: a record and no .gitattributes
+        self.p.record("cfg")
+        env = dict(self.p.env, RESPEAK_TODAY="2026-10-17")
+        self.assertRan(self.p.run("use", "cfg", "--outcome", "clean", env=env), 0)
+        with open(os.path.join(self.p.dir, ATTRIBUTES_REL), "rb") as f:
+            self.assertEqual(f.read(), UNION)
+
+    def test_due_reads_reviewed_on_ratified_entries_only(self):
+        env = dict(self.p.env, RESPEAK_TODAY="2026-10-17")
+        self.p.write(LEXICON_REL, "entries:\n" + dated("cfg", status="proposed", reviewed="soon")
+                     + dated("IU", status="retired", reviewed="5") + dated("R1..R7"))
+        self.assertRan(self.p.run("due", env=env), 0)
+        self.p.write(LEXICON_REL, "entries:\n" + dated("cfg", reviewed="soon"))
+        r = self.p.run("due", env=env)
+        self.assertRan(r, 2, "")
+        self.assertIn("entries[0] (cfg): reviewed must be a YYYY-MM-DD date", r.stderr)
 
 
 if __name__ == "__main__":
