@@ -17,8 +17,9 @@
 #   scope:       where it is valid (global | repo | session)
 #   status:      proposed | ratified | retired
 #   ratified_by: human|auto + date
-#   uses:        observed-use counter. Declared, not built: no script writes it
-#                yet, so every entry reads 0. Leave it at 0 by hand.
+#   uses:        not read; leave it at 0. A use is a line in the project's
+#                use record, .claude/respeak/uses.jsonl, which
+#                `scripts/respeak-lexicon.py use` appends
 #   legibility:  0.0-1.0 estimate of how guessable it is without the lexicon
 #                (entries below config's legibility_floor are rejected)
 

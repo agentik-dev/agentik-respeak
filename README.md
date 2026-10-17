@@ -164,6 +164,9 @@ python3 plugin/scripts/respeak-verify-edit.py <before> <after>     # exit 0 = th
 bash plugin/scripts/respeak-check.sh --verify origin/main          # the gate over every doc, as CI runs it
 bash plugin/scripts/respeak-config.sh explain --for docs/exec/q3.md
 bash plugin/scripts/render-lexicon-digest.sh                       # after ratifying a proposal
+python3 plugin/scripts/respeak-lexicon.py check                    # the cap and the edit distance over ratified terms
+python3 plugin/scripts/respeak-lexicon.py use cfg --outcome clean  # one line in .claude/respeak/uses.jsonl
+python3 plugin/scripts/respeak-lexicon.py ratify                   # which proposals are eligible; it writes nothing
 ```
 
 `respeak-verify-edit.py` checks that a style edit kept the structure. In
@@ -258,6 +261,7 @@ Each file runs alone in seconds:
 | `tests/test_config_layers.py` | the layered configuration resolver |
 | `tests/test_provider_layer.py` | the session provider layer |
 | `tests/test_include.py` | `/respeak:include`: the render, the cap, the exits, the tracked inputs, `propose` |
+| `tests/test_lexicon.py` | `respeak-lexicon.py`: the cap, the edit distance, the use record, the ratification verdict |
 | `tests/test_readme.py` | this README: the status line, the icon, the size, no sibling path |
 | `tests/test_gate_hook.sh` | the gate hook under the resolver |
 | `tests/test_hooks.sh` | the narrative nudge, the statusline, the SessionStart key |
@@ -306,7 +310,7 @@ proposal is only a proposal until a human ratifies it.
 
 ## Status
 
-Status: version `0.8.1`, rendered `2026-10-14`, `279` unittest cases and `10` bash suites.
+Status: version `0.9.0`, rendered `2026-10-16`, `308` unittest cases and `10` bash suites.
 
 | Surface | State |
 |---|---|
@@ -321,13 +325,10 @@ Status: version `0.8.1`, rendered `2026-10-14`, `279` unittest cases and `10` ba
 | Headless renderer: `respeak-render.sh` wraps `claude -p` | Working |
 | Configuration resolver: `respeak-config.sh resolve\|explain\|gate\|validate` | Working |
 
-Not yet built. The first six items are shorthand governance: the config no
+Not yet built. The first three items are shorthand governance: the config no
 longer declares them, and [`NICE_TO_HAVE.md`](/NICE_TO_HAVE.md) holds their plan.
 
-- Lexicon entry cap (150 terms)
-- Edit-distance check between near-neighbor shorthand (minimum distance 2)
 - Usage-based expiry (180 days unused)
-- Auto-ratification gate (5 clean uses required)
 - Fresh-decoder legibility audits (30-day cadence)
 - Review cadence (90 days), register marker, reserved metawords, readback and decompress triggers
 - `respeak compile`: the corpus as a Vale style package
@@ -349,7 +350,7 @@ plugin/.claude-plugin/     manifest + userConfig
 plugin/agents/respeak.md   the translator
 plugin/skills/             respeak, init, off, on, report, include
 plugin/hooks/hooks.json    lexicon status, milestone narrative, style gate
-plugin/scripts/            resolver, measure, verify-edit, gate, render, check, doctor, include
+plugin/scripts/            resolver, measure, verify-edit, gate, render, check, doctor, include, lexicon
 plugin/config/             plugin defaults, the /respeak:init seed, the include template
 plugin/corpus/             banned phrases, replacements, lexicon, style maps
 plugin/docs/               the configuration contract
