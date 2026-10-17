@@ -1070,13 +1070,13 @@ class V043CLI(unittest.TestCase):
 class ShorthandGovernanceKeys(unittest.TestCase):
     SHIPPED = os.path.join(PLUGIN, "config", "respeak.config.yaml")
     # tagged [not built] in 66531f7: declared, and nothing read them
-    NOT_BUILT = ("auto", "retire_after_days_unused",
+    NOT_BUILT = ("retire_after_days_unused",
                  "review_cadence_days", "legibility_audit", "register_marker",
                  "reserved_metawords", "readback_required_for", "decompress_on")
     # the keys with behaviour: a fixed path the scripts use, the translator's prompt,
-    # or respeak-lexicon.py (r16: check reads the cap and the distance)
+    # or respeak-lexicon.py (r16: check reads the cap and the distance, ratify those and auto)
     KEPT = {"lexicon", "proposal_dir", "ratification", "legibility_floor", "never_compress",
-            "max_entries", "min_token_edit_distance"}
+            "max_entries", "min_token_edit_distance", "auto"}
 
     def setUp(self):
         self.fx = Fixture()

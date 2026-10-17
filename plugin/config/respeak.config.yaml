@@ -287,17 +287,22 @@ shorthand: # project-only: governance never varies by folder or by user
   #   [fixed path]       the scripts and the agent use a fixed path; this key is not read
   #   [respeak-lexicon.py VERB] scripts/respeak-lexicon.py reads it in that verb
   # The governance keys nothing read are not shipped (a knob with no behaviour
-  # is removed): expiry, the review and audit cadences, the auto-ratification
-  # gate, the register marker, reserved metawords, readback and decompress
-  # triggers. NICE_TO_HAVE.md holds the plan. A file that still sets one gets
-  # what any unknown key gets: dropped as project-only from a user or folder
-  # layer, merged and unread from a project layer.
+  # is removed): expiry, the review and audit cadences, the register marker,
+  # reserved metawords, readback and decompress triggers. NICE_TO_HAVE.md
+  # holds the plan. A file that still sets one gets what any unknown key
+  # gets: dropped as project-only from a user or folder layer, merged and
+  # unread from a project layer.
   lexicon: corpus/lexicon.yaml # [fixed path] .claude/respeak/lexicon.yaml, else this seed
-  max_entries: 150 # [respeak-lexicon.py check] the cap on ratified entries, the digest's terms
-  min_token_edit_distance: 2 # [respeak-lexicon.py check] Levenshtein, case-folded, each ratified pair
+  max_entries: 150 # [respeak-lexicon.py check, ratify] the cap on ratified entries, the digest's terms
+  min_token_edit_distance: 2 # [respeak-lexicon.py check, ratify] Levenshtein, case-folded, each ratified pair
   proposal_dir: .claude/respeak/proposals/ # [fixed path] in the project, never the plugin
   ratification: human # human | auto. [instruction-only]: the agent never ratifies
-  legibility_floor: 0.5 # [instruction-only] the agent proposes nothing below it
+  legibility_floor: 0.5 # [instruction-only] the agent proposes nothing below it;
+                        # [respeak-lexicon.py ratify] an entry below it is not eligible
+  auto: # [respeak-lexicon.py ratify] when a proposed entry is eligible; ratify writes nothing
+    uses: 5                       # clean uses in .claude/respeak/uses.jsonl
+    fidelity_failures_allowed: 0  # failure uses it may have
+    readback_evidence: true       # true: only a clean use recorded with readback counts
   # never_compress: [instruction-only] the agent keeps each class verbatim;
   # respeak-verify-edit.py also holds numbers across an editorial pass.
   never_compress: # TJC do-not-use format: each ban carries its failure story

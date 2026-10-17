@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""respeak-lexicon: the shorthand lexicon's static rules and its use record.
+"""respeak-lexicon: the shorthand lexicon's static rules, its use record, and
+the ratification verdict.
 
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py check [--root R]
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py use TERM --outcome clean|failure \
         [--readback] [--source S] [--root R]
+    "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py ratify [--root R]
 
 Inputs, and nothing else: R/.claude/respeak/lexicon.yaml, else the plugin's
 seed corpus/lexicon.yaml; and `shorthand` from the plugin defaults
@@ -30,9 +32,20 @@ term the lexicon lacks or has retired, a bad date, and a root with no
 .claude/respeak/. It is the file's only writer; a reader skips a line that
 is not such a record and names it on stderr.
 
-Exit: check 0 ok, 1 a problem; use 0 recorded; each 2 on a usage error, a
-bad key value, a lexicon that cannot be read as entries, or a refusal, with
-one line and no traceback.
+`ratify` judges each `status: proposed` entry, in file order, by
+`shorthand.auto`: it is eligible when its clean uses reach `auto.uses`
+(with `auto.readback_evidence` true, only a clean use with readback
+counts), its failure uses stay within `auto.fidelity_failures_allowed`, it
+is `min_token_edit_distance` or more from each ratified term, fewer than
+`max_entries` are ratified, and its legibility meets `legibility_floor`.
+A line an entry, `<term>: eligible` or `<term>: not eligible: ` and the
+reasons in that order, joined by `; `; then
+`ratify: P proposed, E eligible; shorthand.ratification: V`. It writes
+nothing: a person ratifies.
+
+Exit: check 0 ok, 1 a problem; use 0 recorded; ratify 0 whatever the
+verdicts; each 2 on a usage error, a bad key value, a lexicon that cannot
+be read as entries, or a refusal, with one line and no traceback.
 """
 import argparse
 import datetime
@@ -108,6 +121,11 @@ def whole(value):
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def fraction(value):
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and 0 <= value <= 1)
+
+
 def governance(root):
     """The keys this script reads, each checked; a bad value is a Usage."""
     sh = shorthand(root)
@@ -117,6 +135,25 @@ def governance(root):
         if not whole(value) or value < 1:
             raise Usage("shorthand.%s must be a whole number of 1 or more, not %r" % (key, value))
         gov[key] = value
+    auto = sh.get("auto")
+    if not isinstance(auto, dict):
+        raise Usage("shorthand.auto must be a mapping, not %r" % (auto,))
+    for key, low in (("uses", 1), ("fidelity_failures_allowed", 0)):
+        value = auto.get(key)
+        if not whole(value) or value < low:
+            raise Usage("shorthand.auto.%s must be a whole number of %d or more, not %r"
+                        % (key, low, value))
+    if not isinstance(auto.get("readback_evidence"), bool):
+        raise Usage("shorthand.auto.readback_evidence must be true or false, not %r"
+                    % (auto.get("readback_evidence"),))
+    gov["auto"] = auto
+    if not fraction(sh.get("legibility_floor")):
+        raise Usage("shorthand.legibility_floor must be a number from 0 to 1, not %r"
+                    % (sh.get("legibility_floor"),))
+    gov["legibility_floor"] = sh["legibility_floor"]
+    if sh.get("ratification") not in ("human", "auto"):
+        raise Usage("shorthand.ratification must be human or auto, not %r" % (sh.get("ratification"),))
+    gov["ratification"] = sh["ratification"]
     return gov
 
 
@@ -146,8 +183,7 @@ def lexicon(root):
             raise Usage("%s (%s): status must be one of %s, not %r"
                         % (where, e["term"], ", ".join(STATUSES), e.get("status")))
         leg = e.get("legibility")
-        if leg is not None and (isinstance(leg, bool) or not isinstance(leg, (int, float))
-                                or not 0 <= leg <= 1):
+        if leg is not None and not fraction(leg):
             raise Usage("%s (%s): legibility must be a number from 0 to 1, not %r"
                         % (where, e["term"], leg))
     return entries
@@ -254,6 +290,49 @@ def check(root):
     return 1 if n else 0
 
 
+def plural(n, word):
+    return "%d %s%s" % (n, word, "" if n == 1 else "s")
+
+
+def ratify(root):
+    gov = governance(root)
+    entries = lexicon(root)
+    records = uses(root)
+    terms = ratified(entries)
+    auto, floor = gov["auto"], gov["legibility_floor"]
+    need, allowed, readback = auto["uses"], auto["fidelity_failures_allowed"], auto["readback_evidence"]
+    cap, least = gov["max_entries"], gov["min_token_edit_distance"]
+    proposed = [e for e in entries if e["status"] == "proposed"]
+    eligible = 0
+    for e in proposed:
+        mine = [r for r in records if r["term"] == e["term"]]
+        clean = sum(1 for r in mine if r["outcome"] == "clean" and (r["readback"] or not readback))
+        failures = sum(1 for r in mine if r["outcome"] == "failure")
+        reasons = []
+        if clean < need:
+            reasons.append("%d of %d clean uses%s" % (clean, need, " with readback" if readback else ""))
+        if failures > allowed:
+            reasons.append("%s, %d allowed" % (plural(failures, "fidelity failure"), allowed))
+        for t in terms:
+            d = distance(e["term"], t)
+            if d < least:
+                reasons.append("%d apart from %s, min %d" % (d, t, least))
+        if len(terms) >= cap:
+            reasons.append("the cap, %d ratified" % len(terms))
+        leg = e.get("legibility")
+        if leg is None or leg < floor:
+            reasons.append("legibility %s, floor %s" % ("none" if leg is None else "%g" % leg,
+                                                        "%g" % floor))
+        if reasons:
+            print("%s: not eligible: %s" % (e["term"], "; ".join(reasons)))
+        else:
+            eligible += 1
+            print("%s: eligible" % e["term"])
+    print("ratify: %d proposed, %d eligible; shorthand.ratification: %s"
+          % (len(proposed), eligible, gov["ratification"]))
+    return 0
+
+
 def today():
     given = os.environ.get("RESPEAK_TODAY")
     if not given:
@@ -300,15 +379,17 @@ def use(root, term, outcome, readback, source):
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="respeak-lexicon.py",
-                                description="The shorthand lexicon's static rules and its use record.")
-    sub = p.add_subparsers(dest="verb", required=True, metavar="{check,use}")
+                                description="The shorthand lexicon's static rules, its use "
+                                            "record, and the ratification verdict.")
+    sub = p.add_subparsers(dest="verb", required=True, metavar="{check,use,ratify}")
     s = sub.add_parser("check", help="hold the ratified entries to the cap and the edit distance")
     u = sub.add_parser("use", help="append one use of a term to .claude/respeak/uses.jsonl")
     u.add_argument("term", metavar="TERM")
     u.add_argument("--outcome", required=True, choices=OUTCOMES)
     u.add_argument("--readback", action="store_true", help="the reader read the term back")
     u.add_argument("--source", metavar="S", help="where the use was seen")
-    for x in (s, u):
+    v = sub.add_parser("ratify", help="judge each proposed entry by shorthand.auto; write nothing")
+    for x in (s, u, v):
         x.add_argument("--root", metavar="R", default=".",
                        help="the project directory (default: the current one)")
     args = p.parse_args(argv)
@@ -318,6 +399,8 @@ def main(argv=None):
             raise Usage("not a directory: %s" % args.root)
         if args.verb == "use":
             return use(root, args.term, args.outcome, args.readback, args.source)
+        if args.verb == "ratify":
+            return ratify(root)
         return check(root)
     except Usage as e:
         warn(str(e))

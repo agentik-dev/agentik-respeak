@@ -1,13 +1,13 @@
-"""Tests for plugin/scripts/respeak-lexicon.py: the lexicon's static rules and
-its use record.
+"""Tests for plugin/scripts/respeak-lexicon.py: the lexicon's static rules, its
+use record, and the ratification verdict.
 
 The script reads R/.claude/respeak/lexicon.yaml, else the plugin's seed, and
 `shorthand` from the plugin defaults with R/.claude/respeak/config.yaml over
 them; no user, folder or local layer. `use` appends to
 R/.claude/respeak/uses.jsonl. Each case builds a project under a temp HOME
 (CLAUDE_CONFIG_DIR inside it) and runs the script with --root.
-Exits: check 0 ok, 1 a problem; use 0; each 2 on a bad value, a bad lexicon
-or a refusal.
+Exits: check 0 ok, 1 a problem; use 0; ratify 0 whatever the verdicts; each
+2 on a bad value, a bad lexicon or a refusal.
 """
 import contextlib
 import datetime
@@ -72,6 +72,21 @@ class Project:
 
     def lexicon(self, *entries):
         return self.write(".claude/respeak/lexicon.yaml", "version: 1\nentries:\n" + "".join(entries))
+
+    def record(self, term, outcome="clean", readback=True, n=1):
+        path = os.path.join(self.dir, USES_REL)
+        with open(path, "a") as f:
+            for _ in range(n):
+                f.write(json.dumps({"term": term, "date": "2026-10-16", "outcome": outcome,
+                                    "readback": readback}) + "\n")
+
+    def tree(self):
+        found = {}
+        for d, _, files in os.walk(self.root):
+            for name in files:
+                with open(os.path.join(d, name), "rb") as f:
+                    found[os.path.join(d, name)] = f.read()
+        return found
 
     def uses(self):
         with open(os.path.join(self.dir, USES_REL), "rb") as f:
@@ -285,6 +300,126 @@ class UseRecord(Case):
         self.assertEqual(err.getvalue(), "")
         self.assertEqual(sorted(r["source"] for r in records),
                          ["writer %02d" % i for i in range(16)])
+
+
+
+SEED_RATIFY = ("2-lane: not eligible: 0 of 5 clean uses with readback\n"
+               "ratify: 1 proposed, 0 eligible; shorthand.ratification: human\n")
+
+
+class RatifyGate(Case):
+    def setUp(self):
+        super().setUp()
+        # the seed's shape: cfg and R1..R7 ratified, 2-lane proposed at 0.6
+        self.p.lexicon(entry("cfg"), entry("R1..R7", legibility=0.5),
+                       entry("2-lane", "proposed", 0.6))
+
+    def verdict(self, line, tail="ratify: 1 proposed, %d eligible; shorthand.ratification: human\n"):
+        r = self.p.run("ratify")
+        self.assertRan(r, 0, line + "\n" + tail % (line.endswith(": eligible")))
+        return r
+
+    def test_the_seed(self):
+        os.remove(os.path.join(self.p.respeak, "lexicon.yaml"))
+        before = self.p.tree()
+        self.assertRan(self.p.run("ratify"), 0, SEED_RATIFY)
+        self.assertRan(self.p.run("ratify", wrapper=True), 0, SEED_RATIFY)
+        self.assertEqual(self.p.tree(), before, "ratify writes nothing")
+
+    def test_eligible(self):
+        self.p.record("2-lane", n=5)
+        before = self.p.tree()
+        self.verdict("2-lane: eligible")
+        self.assertEqual(self.p.tree(), before, "ratify writes nothing: a person ratifies")
+
+    def test_too_few_clean_uses(self):
+        self.p.record("2-lane", n=3)
+        self.p.record("cfg", n=5)       # another term's uses count for nothing
+        self.p.record("2-LANE", n=5)    # nor a spelling the lexicon does not hold
+        self.verdict("2-lane: not eligible: 3 of 5 clean uses with readback")
+
+    def test_readback_on_and_off(self):
+        self.p.record("2-lane", n=3)
+        self.p.record("2-lane", readback=False, n=2)
+        self.verdict("2-lane: not eligible: 3 of 5 clean uses with readback")
+        self.p.config("shorthand: {auto: {readback_evidence: false}}\n")
+        self.verdict("2-lane: eligible")
+        self.p.config("shorthand: {auto: {readback_evidence: false, uses: 6}}\n")
+        self.verdict("2-lane: not eligible: 5 of 6 clean uses")
+
+    def test_fidelity_failures(self):
+        self.p.record("2-lane", n=5)
+        self.p.record("2-lane", "failure", readback=False)
+        self.verdict("2-lane: not eligible: 1 fidelity failure, 0 allowed")
+        self.p.config("shorthand: {auto: {fidelity_failures_allowed: 1}}\n")
+        self.verdict("2-lane: eligible")
+        self.p.record("2-lane", "failure")
+        self.verdict("2-lane: not eligible: 2 fidelity failures, 1 allowed")
+
+    def test_too_near_a_ratified_term(self):
+        self.p.lexicon(entry("cfg"), entry("R1..R7"), entry("CFH", "proposed", 0.6))
+        self.p.record("CFH", n=5)
+        self.verdict("CFH: not eligible: 1 apart from cfg, min 2")
+        self.p.config("shorthand: {min_token_edit_distance: 1}\n")
+        self.verdict("CFH: eligible")
+
+    def test_the_cap(self):
+        self.p.record("2-lane", n=5)
+        self.p.config("shorthand: {max_entries: 2}\n")
+        self.verdict("2-lane: not eligible: the cap, 2 ratified")
+        self.p.config("shorthand: {max_entries: 3}\n")
+        self.verdict("2-lane: eligible")
+
+    def test_the_legibility_floor(self):
+        self.p.lexicon(entry("cfg"), entry("2L", "proposed", 0.4))
+        self.p.record("2L", n=5)
+        self.verdict("2L: not eligible: legibility 0.4, floor 0.5")
+        self.p.config("shorthand: {legibility_floor: 0.4}\n")
+        self.verdict("2L: eligible")
+        self.p.write(".claude/respeak/lexicon.yaml",
+                     "entries:\n  - {term: 2L, status: proposed}\n")
+        self.verdict("2L: not eligible: legibility none, floor 0.4")
+
+    def test_each_entry_in_file_order_every_reason_in_order(self):
+        self.p.lexicon(entry("cfg"), entry("CFH", "proposed", 0.3), entry("IU", "retired"),
+                       entry("2-lane", "proposed", 0.6), entry("R1..R7"))
+        self.p.record("CFH", "failure")
+        self.p.record("CFH", readback=False, n=5)
+        self.p.record("2-lane", n=5)
+        self.p.config("shorthand: {max_entries: 2, ratification: auto}\n")
+        r = self.p.run("ratify")
+        self.assertRan(r, 0, "CFH: not eligible: 0 of 5 clean uses with readback; "
+                       "1 fidelity failure, 0 allowed; 1 apart from cfg, min 2; "
+                       "the cap, 2 ratified; legibility 0.3, floor 0.5\n"
+                       "2-lane: not eligible: the cap, 2 ratified\n"
+                       "ratify: 2 proposed, 0 eligible; shorthand.ratification: auto\n")
+
+    def test_a_skipped_line_is_named_and_the_verdict_stands(self):
+        self.p.record("2-lane", n=5)
+        with open(os.path.join(self.p.dir, USES_REL), "a") as f:
+            f.write("{oops\n")
+        r = self.verdict("2-lane: eligible")
+        self.assertIn("%s:6: not JSON; skipped" % USES_REL, r.stderr)
+
+    def test_a_bad_value_exits_2(self):
+        for text, key in (("shorthand: {auto: {uses: x}}\n", "shorthand.auto.uses"),
+                          ("shorthand: {auto: {fidelity_failures_allowed: -1}}\n",
+                           "shorthand.auto.fidelity_failures_allowed"),
+                          ("shorthand: {auto: {readback_evidence: 1}}\n",
+                           "shorthand.auto.readback_evidence"),
+                          ("shorthand: {legibility_floor: 2}\n", "shorthand.legibility_floor"),
+                          ("shorthand: {ratification: robot}\n", "shorthand.ratification")):
+            for verb in ("ratify", "check"):
+                with self.subTest(text=text, verb=verb):
+                    self.p.config(text)
+                    r = self.p.run(verb)
+                    self.assertRan(r, 2, "")
+                    self.assertIn(key, r.stderr)
+        # a mapping replaced by a scalar is the resolver's merge rule: ignored, with its warning
+        self.p.config("shorthand: {auto: 5}\n")
+        r = self.p.run("ratify")
+        self.assertRan(r, 0, SEED_RATIFY)
+        self.assertIn("shorthand.auto is a mapping in a lower layer", r.stderr)
 
 
 if __name__ == "__main__":
