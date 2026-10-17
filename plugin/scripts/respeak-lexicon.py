@@ -4,7 +4,7 @@ ratification verdict, and its clocks.
 
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py check [--root R]
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py use TERM --outcome clean|failure \
-        [--readback] [--source S] [--root R]
+        [--readback] [--for CLASS] [--source S] [--root R]
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py ratify [--root R]
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py due [--root R]
 
@@ -36,9 +36,16 @@ reads. It prints a line per problem, then one summary line:
 committed beside the lexicon: one JSON object a line, appended with one
 O_APPEND write and never rewritten, its keys `term`, `date` (YYYY-MM-DD,
 UTC today, or RESPEAK_TODAY when set), `outcome` (clean | failure),
-`readback` (true with --readback), then `source` when given. It refuses a
-term the lexicon lacks or has retired, a bad date, and a root with no
-.claude/respeak/. It is the file's only writer; a reader skips a line that
+`readback` (true with --readback), then `for` and `source` when given. It
+refuses a term the lexicon lacks or has retired, a bad date, and a root
+with no .claude/respeak/. It reads and checks two keys each call:
+`shorthand.readback_required_for`, the classes whose items a term serves
+cleanly only when read back, so `--for CLASS` refuses a class it does not
+list, or a clean use without --readback; and `shorthand.decompress_on`,
+the cases the translator writes every term out in full: with
+`repeated-fidelity-failure` listed, a term with 2 or more failure uses
+gets one more line, `decompress: <term>: <n> failure uses
+(shorthand.decompress_on)`. It is the file's only writer; a reader skips a line that
 is not such a record and names it on stderr. When it creates the file it
 also writes .claude/respeak/.gitattributes, `uses.jsonl merge=union`, if
 there is none, so two branches that each append merge with both lines; it
@@ -111,6 +118,9 @@ STATUSES = ("proposed", "ratified", "retired")
 OUTCOMES = ("clean", "failure")
 METHODS = ("fresh-decoder",)
 MARKERS = ("required", "optional")
+DECOMPRESS = ("escalation-to-human", "incident", "repeated-fidelity-failure", "new-partner")
+REPEATED = 2  # failure uses that make a term's fidelity failure repeated
+SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 SHELL_CHARS = "`$;|&<>\"'\\"  # with whitespace: a term the skill passes to `use` never holds one
 
@@ -303,6 +313,8 @@ def why_not_use(rec):
         return "outcome is not clean or failure"
     if not isinstance(rec.get("readback"), bool):
         return "readback is not true or false"
+    if "for" in rec and not isinstance(rec["for"], str):
+        return "for is not a string"
     if "source" in rec and not isinstance(rec["source"], str):
         return "source is not a string"
     return None
@@ -460,15 +472,38 @@ def attributes(root):
         os.close(fd)
 
 
-def use(root, term, outcome, readback, source):
+def triggers(root):
+    """The two keys `use` reads, each checked; a bad value is a Usage."""
+    sh = shorthand(root)
+    classes = sh.get("readback_required_for")
+    if not isinstance(classes, list) or not all(isinstance(c, str) and SLUG_RE.match(c)
+                                                for c in classes):
+        raise Usage("shorthand.readback_required_for must be a list of slugs, not %r" % (classes,))
+    cases = sh.get("decompress_on")
+    if not isinstance(cases, list) or not all(isinstance(c, str) and c in DECOMPRESS for c in cases):
+        raise Usage("shorthand.decompress_on must be a list of %s, not %r"
+                    % (", ".join(DECOMPRESS), cases))
+    return classes, cases
+
+
+def use(root, term, outcome, readback, source, for_=None):
     if not os.path.isdir(os.path.join(root, ".claude", "respeak")):
         raise Usage("no .claude/respeak/ under %s; /respeak:init creates it" % root)
+    classes, cases = triggers(root)
+    if for_ is not None:
+        if for_ not in classes:
+            raise Usage("%s is not in shorthand.readback_required_for; refused" % for_)
+        if outcome == "clean" and not readback:
+            raise Usage("a clean use for %s needs --readback (shorthand.readback_required_for); "
+                        "refused" % for_)
     statuses = [e["status"] for e in lexicon(root) if e["term"] == term]
     if not statuses:
         raise Usage("%s is not a lexicon term; refused" % term)
     if all(s == "retired" for s in statuses):
         raise Usage("%s is retired; refused" % term)
     rec = {"term": term, "date": today(), "outcome": outcome, "readback": readback}
+    if for_ is not None:
+        rec["for"] = for_
     if source is not None:
         rec["source"] = source
     line = (json.dumps(rec, ensure_ascii=False) + "\n").encode("utf-8")
@@ -489,8 +524,13 @@ def use(root, term, outcome, readback, source):
         os.close(fd)
     if creating:
         attributes(root)
-    print("use: %s %s%s on %s, recorded in %s" % (term, outcome, " with readback" if readback else "",
-                                                   rec["date"], USES_REL))
+    print("use: %s %s%s%s on %s, recorded in %s"
+          % (term, outcome, " with readback" if readback else "",
+             " for %s" % for_ if for_ is not None else "", rec["date"], USES_REL))
+    if "repeated-fidelity-failure" in cases:
+        n = sum(1 for r in uses(root) if r["term"] == term and r["outcome"] == "failure")
+        if n >= REPEATED:
+            print("decompress: %s: %d failure uses (shorthand.decompress_on)" % (term, n))
     return 0
 
 
@@ -641,6 +681,8 @@ def main(argv=None):
     u.add_argument("term", metavar="TERM")
     u.add_argument("--outcome", required=True, choices=OUTCOMES)
     u.add_argument("--readback", action="store_true", help="the reader read the term back")
+    u.add_argument("--for", dest="for_", metavar="CLASS",
+                   help="the item's class, one shorthand.readback_required_for lists")
     u.add_argument("--source", metavar="S", help="where the use was seen")
     v = sub.add_parser("ratify", help="judge each proposed entry by shorthand.auto; write nothing")
     d = sub.add_parser("due", help="the retire, review and audit clocks that are due; write nothing")
@@ -654,7 +696,7 @@ def main(argv=None):
         if not os.path.isdir(root):
             raise Usage("not a directory: %s" % args.root)
         if args.verb == "use":
-            return use(root, args.term, args.outcome, args.readback, args.source)
+            return use(root, args.term, args.outcome, args.readback, args.source, args.for_)
         if args.verb == "ratify":
             return ratify(root)
         if args.verb == "due":

@@ -95,7 +95,12 @@ and flag the gap for a corpus fix instead of over-rewriting.
    `expand-first-use` — "term (expansion)" the first time, the bare term
    after; `inline` — the ratified term as-is (the `author` profile,
    tech_level 5, the one place the two lanes may converge). When the field
-   is absent, expand everything unless tech_level is 5.
+   is absent, expand everything unless tech_level is 5. Decompress,
+   whatever `lexicon_access` says, in each case `shorthand.decompress_on`
+   lists: every term when the narrative asks a person to decide or act
+   (`escalation-to-human`), when the context is an incident (`incident`),
+   or when no profile applied (`new-partner`); and a term a `decompress:`
+   line names (`repeated-fidelity-failure`).
 3. Load the style gates: banned-phrases, replacements, and
    `style/tone-mapping.md`. `narrative.reading_level_grade`, when set,
    caps the register the same way a mode's `reading_level_grade` does.
@@ -253,6 +258,10 @@ terms removed from source`). When the caller asks for uses, one more final
 line, the last: `uses: ` then each lexicon term the source used,
 `` `<term>` clean `` or `` `<term>` failure `` (used true to its definition,
 or not), plus ` readback` when its receiver used it back, joined by `; `;
-with none, `uses: none`. The caller records them; you run nothing. No
+with none, `uses: none`. A use in an item of a class
+`shorthand.readback_required_for` lists is `clean` only with ` readback`,
+and its item adds ` for <class>`; without the readback, the narrative
+states that item in full, flagged `not read back`. The caller records
+them; you run nothing. No
 other preamble, no process notes, no pleasantries. You are judged on
 whether the reader understood on the first pass.

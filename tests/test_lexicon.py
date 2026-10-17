@@ -779,13 +779,15 @@ AGENT_MD = os.path.join(PLUGIN, "agents", "respeak.md")
 SKILL_MD = os.path.join(PLUGIN, "skills", "respeak", "SKILL.md")
 RENDER = os.path.join(PLUGIN, "scripts", "respeak-render.sh")
 USE_CALL = ('"${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py use \'<term>\' '
-            '--outcome <outcome> [--readback] --source "<source>" --root "${CLAUDE_PROJECT_DIR}"')
-USES_ITEM = re.compile(r"`([^`]+)` (clean|failure)( readback)?")
+            '--outcome <outcome> [--readback] [--for <class>] --source "<source>" '
+            '--root "${CLAUDE_PROJECT_DIR}"')
+USES_ITEM = re.compile(r"`([^`]+)` (clean|failure)( readback)?(?: for ([a-z0-9]+(?:-[a-z0-9]+)*))?")
 
 
 def parse_uses(line):
-    """The translator's `uses:` line as (term, outcome, readback) items, as
-    the skill's step 6 reads it; None for a line out of the shape."""
+    """The translator's `uses:` line as (term, outcome, readback, class)
+    items, as the skill's step 6 reads it; None for a line out of the
+    shape."""
     if not line.startswith("uses: "):
         return None
     body = line[len("uses: "):]
@@ -796,7 +798,7 @@ def parse_uses(line):
         m = USES_ITEM.fullmatch(part)
         if not m:
             return None
-        items.append((m.group(1), m.group(2), bool(m.group(3))))
+        items.append((m.group(1), m.group(2), bool(m.group(3)), m.group(4)))
     return items
 
 
@@ -821,7 +823,10 @@ class UseWiring(Case):
                       "then each lexicon term the source used, `` `<term>` clean `` or "
                       "`` `<term>` failure `` (used true to its definition, or not), plus "
                       "` readback` when its receiver used it back, joined by `; `; with none, "
-                      "`uses: none`. The caller records them; you run nothing.", flat(text))
+                      "`uses: none`. A use in an item of a class `shorthand.readback_required_for` "
+                      "lists is `clean` only with ` readback`, and its item adds ` for <class>`; "
+                      "without the readback, the narrative states that item in full, flagged "
+                      "`not read back`. The caller records them; you run nothing.", flat(text))
 
     def test_the_skill_text(self):
         text = read(SKILL_MD)
@@ -832,12 +837,15 @@ class UseWiring(Case):
                 "it is neither scanned nor relayed.")
         record = ("6. Record the uses, once, from the agent's first `uses:` line; "
                   "`uses: none` records nothing.")
+        flags = ("with `--readback` when the item holds ` readback`, `--for <class>` when it "
+                 "ends ` for <class>`")
         skip = ("A refusal naming `no .claude/respeak/` means the project keeps no use record: "
-                "skip the rest silently. Name any other refusal in one line after the narrative.")
-        for phrase in (ask, drop, record, USE_CALL, skip):
+                "skip the rest silently. Name any other refusal in one line after the narrative, "
+                "and relay there each `decompress:` line `use` prints.")
+        for phrase in (ask, drop, record, USE_CALL, flags, skip):
             self.assertIn(phrase, body)
         order = [body.index(p) for p in ("4. Delegate", ask, "5. Verify", drop, "respeak-measure.py",
-                                         record, USE_CALL, skip, "7. If the agent reports")]
+                                         record, USE_CALL, flags, skip, "7. If the agent reports")]
         self.assertEqual(order, sorted(order))
 
     def test_the_grant_admits_the_call(self):
@@ -851,7 +859,8 @@ class UseWiring(Case):
         for each in (call, measure):
             with self.subTest(call=each[:40]):
                 # the plugin root substituted as Claude Code does on load, the shell's words
-                argv = shlex.split(each.replace("[--readback]", "--readback").split(" <<")[0])
+                argv = shlex.split(each.replace("[--readback]", "--readback")
+                                   .replace("[--for <class>]", "--for x").split(" <<")[0])
                 command = " ".join(argv).replace("${CLAUDE_PLUGIN_ROOT}", "/p")
                 self.assertTrue(any(fnmatch.fnmatchcase(command, r.replace("${CLAUDE_PLUGIN_ROOT}", "/p"))
                                     for r in rules), (command, rules))
@@ -863,22 +872,25 @@ class UseWiring(Case):
     def test_a_line_in_the_shape_gives_its_records(self):
         self.p.lexicon(entry("cfg"), entry("R1..R7"), entry("2-lane", "proposed", 0.6))
         reply = ("\U0001f4e3 respeak · bluf\n\nThe narrative.\nlexicon: 0 proposals written\n"
-                 "uses: `cfg` clean readback; `2-lane` failure; `R1..R7` clean")
+                 "uses: `cfg` clean readback; `2-lane` failure; `R1..R7` clean; "
+                 "`cfg` clean readback for irreversible-actions")
         *narrative, last = reply.splitlines()
         self.assertNotIn("uses:", "\n".join(narrative), "the narrative scanned and relayed")
         items = parse_uses(last)
-        self.assertEqual(items, [("cfg", "clean", True), ("2-lane", "failure", False),
-                                 ("R1..R7", "clean", False)])
+        self.assertEqual(items, [("cfg", "clean", True, None), ("2-lane", "failure", False, None),
+                                 ("R1..R7", "clean", False, None),
+                                 ("cfg", "clean", True, "irreversible-actions")])
         env = dict(self.p.env, RESPEAK_TODAY="2026-10-16")
-        for term, outcome, readback in items:
+        for term, outcome, readback, cls in items:
             argv = (["use", term, "--outcome", outcome] + (["--readback"] if readback else [])
-                    + ["--source", "session s1"])
+                    + (["--for", cls] if cls else []) + ["--source", "session s1"])
             self.assertRan(self.p.run(*argv, env=env, wrapper=True), 0)
         rec = {"date": "2026-10-16", "source": "session s1"}
         self.assertEqual(lex.uses(self.p.dir), [
             dict(rec, term="cfg", outcome="clean", readback=True),
             dict(rec, term="2-lane", outcome="failure", readback=False),
-            dict(rec, term="R1..R7", outcome="clean", readback=False)])
+            dict(rec, term="R1..R7", outcome="clean", readback=False),
+            dict(rec, term="cfg", outcome="clean", readback=True, **{"for": "irreversible-actions"})])
         self.assertRan(self.p.run("ratify"), 0,
                        "2-lane: not eligible: 0 of 5 clean uses with readback; "
                        "1 fidelity failure, 0 allowed\n"
@@ -886,6 +898,8 @@ class UseWiring(Case):
         # none records nothing; a line out of the shape is not read
         self.assertEqual(parse_uses("uses: none"), [])
         for bad in ("uses: cfg clean", "uses: `cfg` fine", "uses: `cfg` clean, `R1..R7` clean",
+                    "uses: `cfg` clean for", "uses: `cfg` clean for Bad Class",
+                    "uses: `cfg` clean for x readback",
                     "lexicon: 0 proposals written", "uses: `a`b` clean", "uses: `x; y` clean",
                     "uses: `cfg` clean; `x; y` failure"):
             self.assertIsNone(parse_uses(bad), bad)
@@ -1147,6 +1161,137 @@ class RegisterMarker(Case):
                          "required, a narrative keeping a ratified term unexpanded ends its marker "
                          "line ` · shorthand`; [respeak-lexicon.py check] a value outside the two "
                          "exits 2")
+
+
+DECOMPRESS_TEXT = ("Decompress, whatever `lexicon_access` says, in each case `shorthand.decompress_on` "
+                   "lists: every term when the narrative asks a person to decide or act "
+                   "(`escalation-to-human`), when the context is an incident (`incident`), or when "
+                   "no profile applied (`new-partner`); and a term a `decompress:` line names "
+                   "(`repeated-fidelity-failure`).")
+
+
+class ReadbackFor(Case):
+    """shorthand.readback_required_for, read and checked by `use` each call:
+    `--for CLASS` refuses a class not listed, or a clean use without
+    --readback; the record gains `for`."""
+
+    def setUp(self):
+        super().setUp()
+        self.env = dict(self.p.env, RESPEAK_TODAY="2026-10-17")
+
+    def use(self, *args):
+        return self.p.run("use", "cfg", *args, env=self.env)
+
+    def test_the_shipped_classes(self):
+        self.assertEqual(shipped_shorthand()["readback_required_for"],
+                         ["irreversible-actions", "security-findings", "escalations-to-human"])
+
+    def test_a_listed_class_with_readback_is_clean(self):
+        self.assertRan(self.use("--outcome", "clean", "--readback", "--for", "security-findings"), 0,
+                       "use: cfg clean with readback for security-findings on 2026-10-17, "
+                       "recorded in %s\n" % USES_REL)
+        self.assertRan(self.use("--outcome", "failure", "--for", "irreversible-actions"), 0)
+        self.assertEqual([(u["outcome"], u["readback"], u["for"]) for u in lex.uses(self.p.dir)],
+                         [("clean", True, "security-findings"),
+                          ("failure", False, "irreversible-actions")])
+        # without --for, no key
+        self.assertRan(self.use("--outcome", "clean"), 0)
+        self.assertNotIn("for", lex.uses(self.p.dir)[-1])
+
+    def test_clean_without_readback_or_an_unlisted_class_exits_2(self):
+        for args, why in ((("--outcome", "clean", "--for", "security-findings"),
+                           "a clean use for security-findings needs --readback"),
+                          (("--outcome", "clean", "--readback", "--for", "deploys"),
+                           "deploys is not in shorthand.readback_required_for"),
+                          (("--outcome", "failure", "--for", "incident"),
+                           "incident is not in shorthand.readback_required_for")):
+            with self.subTest(args=args):
+                r = self.use(*args)
+                self.assertRan(r, 2, "")
+                self.assertIn(why, r.stderr)
+        self.assertFalse(os.path.lexists(os.path.join(self.p.dir, USES_REL)), "nothing written")
+        # a project's own list
+        self.p.config("shorthand: {readback_required_for: [deploys]}\n")
+        self.assertRan(self.use("--outcome", "clean", "--readback", "--for", "deploys"), 0)
+
+    def test_a_bad_value_exits_2_each_call(self):
+        for value in ("irreversible-actions", "[Bad Slug]", "['']", "[1]", "[a--b]", "[-a]"):
+            with self.subTest(value=value):
+                self.p.config("shorthand: {readback_required_for: %s}\n" % value)
+                r = self.use("--outcome", "clean")
+                self.assertRan(r, 2, "")
+                self.assertIn("shorthand.readback_required_for must be a list of slugs", r.stderr)
+        # check and ratify read it not
+        self.assertRan(self.p.run("check"), 0, SEED_LINE)
+
+    def test_a_record_whose_for_is_not_a_string_is_skipped(self):
+        self.p.record("cfg")
+        with open(os.path.join(self.p.dir, USES_REL), "a") as f:
+            f.write(json.dumps({"term": "cfg", "date": "2026-10-16", "outcome": "clean",
+                                "readback": True, "for": 1}) + "\n")
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(len(lex.uses(self.p.dir)), 1)
+        self.assertIn("uses.jsonl:2: for is not a string; skipped", err.getvalue())
+
+
+class DecompressOn(Case):
+    """shorthand.decompress_on, read and checked by `use` each call; with
+    repeated-fidelity-failure, a term with 2 failure uses gets its
+    `decompress:` line. The translator expands every term in a listed case."""
+
+    def setUp(self):
+        super().setUp()
+        self.env = dict(self.p.env, RESPEAK_TODAY="2026-10-17")
+
+    def test_the_shipped_cases(self):
+        self.assertEqual(shipped_shorthand()["decompress_on"],
+                         ["escalation-to-human", "incident", "repeated-fidelity-failure",
+                          "new-partner"])
+
+    def test_two_failure_uses_name_the_term(self):
+        line = "decompress: cfg: %d failure uses (shorthand.decompress_on)\n"
+        r = self.p.run("use", "cfg", "--outcome", "failure", env=self.env)
+        self.assertRan(r, 0)
+        self.assertNotIn("decompress:", r.stdout)
+        r = self.p.run("use", "cfg", "--outcome", "failure", env=self.env)
+        self.assertRan(r, 0)
+        self.assertTrue(r.stdout.endswith(line % 2), r.stdout)
+        # a later use of the term, clean too, names it again; another term not
+        r = self.p.run("use", "cfg", "--outcome", "clean", env=self.env)
+        self.assertTrue(r.stdout.endswith(line % 2), r.stdout)
+        r = self.p.run("use", "R1..R7", "--outcome", "failure", env=self.env)
+        self.assertNotIn("decompress:", r.stdout)
+        # unlisted, no line
+        self.p.config("shorthand: {decompress_on: [incident, new-partner]}\n")
+        r = self.p.run("use", "cfg", "--outcome", "failure", env=self.env)
+        self.assertRan(r, 0)
+        self.assertNotIn("decompress:", r.stdout)
+
+    def test_a_bad_value_exits_2_each_call(self):
+        for value in ("incident", "[panic]", "[Incident]", "[1]", "{a: 1}"):
+            with self.subTest(value=value):
+                self.p.config("shorthand: {decompress_on: %s}\n" % value)
+                r = self.p.run("use", "cfg", "--outcome", "clean", env=self.env)
+                self.assertRan(r, 2, "")
+                self.assertIn("shorthand.decompress_on must be a list of escalation-to-human, "
+                              "incident, repeated-fidelity-failure, new-partner", r.stderr)
+        self.assertFalse(os.path.lexists(os.path.join(self.p.dir, USES_REL)), "nothing written")
+        self.assertRan(self.p.run("ratify"), 0)
+
+    def test_the_texts(self):
+        self.assertIn(DECOMPRESS_TEXT, flat(read(AGENT_MD)))
+        self.assertEqual(key_comment("decompress_on"),
+                         "decompress_on: [escalation-to-human, incident, repeated-fidelity-failure, "
+                         "new-partner] # [respeak-lexicon.py use] only these four, checked each call; "
+                         "with repeated-fidelity-failure, `use` names a term with 2 failure uses. "
+                         "[instruction-only] the agent expands every term in a listed case, whatever "
+                         "narrative.lexicon_access says")
+        self.assertEqual(key_comment("readback_required_for"),
+                         "readback_required_for: [irreversible-actions, security-findings, "
+                         "escalations-to-human] # [respeak-lexicon.py use] slugs, checked each call; "
+                         "`use --for CLASS` refuses a class not listed, or a clean use without "
+                         "--readback. [instruction-only] a use in an item of a listed class is clean "
+                         "only with readback, its item adding ` for <class>`")
 
 
 if __name__ == "__main__":

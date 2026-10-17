@@ -73,10 +73,12 @@ Steps:
      a silently-shipped violation. Do not attempt a 3rd round yourself.
 6. Record the uses, once, from the agent's first `uses:` line; `uses: none`
    records nothing. For each `` `<term>` <outcome> `` item, run
-   `"${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py use '<term>' --outcome <outcome> [--readback] --source "<source>" --root "${CLAUDE_PROJECT_DIR}"`
-   with `--readback` when the item ends in `readback`, and `<source>` the
-   `$source` file path, else `session ${CLAUDE_CODE_SESSION_ID}`. A refusal
-   naming `no .claude/respeak/` means the project keeps no use record: skip
-   the rest silently. Name any other refusal in one line after the narrative.
+   `"${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py use '<term>' --outcome <outcome> [--readback] [--for <class>] --source "<source>" --root "${CLAUDE_PROJECT_DIR}"`
+   with `--readback` when the item holds ` readback`, `--for <class>` when
+   it ends ` for <class>`, and `<source>` the `$source` file path, else
+   `session ${CLAUDE_CODE_SESSION_ID}`. A refusal naming
+   `no .claude/respeak/` means the project keeps no use record: skip the
+   rest silently. Name any other refusal in one line after the narrative,
+   and relay there each `decompress:` line `use` prints.
 7. If the agent reports lexicon proposals, list the proposed terms in one
    line and note that ratification is pending per the shorthand config.
