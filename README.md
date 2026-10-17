@@ -167,6 +167,7 @@ bash plugin/scripts/render-lexicon-digest.sh                       # after ratif
 python3 plugin/scripts/respeak-lexicon.py check                    # the cap and the edit distance over ratified terms
 python3 plugin/scripts/respeak-lexicon.py use cfg --outcome clean  # one line in .claude/respeak/uses.jsonl
 python3 plugin/scripts/respeak-lexicon.py ratify                   # which proposals are eligible; it writes nothing
+python3 plugin/scripts/respeak-lexicon.py due                      # the retire, review and audit clocks; it writes nothing
 ```
 
 `respeak-verify-edit.py` checks that a style edit kept the structure. In
@@ -310,7 +311,7 @@ proposal is only a proposal until a human ratifies it.
 
 ## Status
 
-Status: version `0.9.0`, rendered `2026-10-16`, `308` unittest cases and `10` bash suites.
+Status: version `0.10.0`, rendered `2026-10-16`, `327` unittest cases and `10` bash suites.
 
 | Surface | State |
 |---|---|
@@ -325,12 +326,11 @@ Status: version `0.9.0`, rendered `2026-10-16`, `308` unittest cases and `10` ba
 | Headless renderer: `respeak-render.sh` wraps `claude -p` | Working |
 | Configuration resolver: `respeak-config.sh resolve\|explain\|gate\|validate` | Working |
 
-Not yet built. The first three items are shorthand governance: the config no
-longer declares them, and [`NICE_TO_HAVE.md`](/NICE_TO_HAVE.md) holds their plan.
+Not yet built. The first two items are shorthand governance, and
+[`NICE_TO_HAVE.md`](/NICE_TO_HAVE.md) holds their plan.
 
-- Usage-based expiry (180 days unused)
-- Fresh-decoder legibility audits (30-day cadence)
-- Review cadence (90 days), register marker, reserved metawords, readback and decompress triggers
+- The register marker, reserved metawords, readback and decompress triggers: the config no longer declares them
+- The audit's decoding: `respeak-lexicon.py due` names the audit's sample, and no step yet gives it to a fresh agent
 - `respeak compile`: the corpus as a Vale style package
 - A display-only translation hook
 

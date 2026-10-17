@@ -529,6 +529,7 @@ def due(root):
     data, shown = lexicon_file(root)
     entries = data["entries"]
     now = datetime.date.fromisoformat(today())
+    audited = written_date(data.get("audited"), shown, "audited")
     retire_n, review_n = gov["retire_after_days_unused"], gov["review_cadence_days"]
     audit = gov["legibility_audit"]
     newest = {}
@@ -536,44 +537,41 @@ def due(root):
         if r["outcome"] == "clean":
             day = datetime.date.fromisoformat(r["date"])
             newest[r["term"]] = max(day, newest.get(r["term"], day))
-    to_retire = to_review = 0
+    lines, count = [], {"retire": 0, "review": 0}
     for i, e in enumerate(entries):
-        where = "%s: entries[%d] (%s)" % (shown, i, e["term"])
-        reviewed = written_date(e.get("reviewed"), where, "reviewed")
+        reviewed = written_date(e.get("reviewed"), "%s: entries[%d] (%s)" % (shown, i, e["term"]),
+                                "reviewed")
         if e["status"] != "ratified":
             continue
         on = ratified_on(e)
-        for verb, n, since, kind, word in (
+        for verb, n, since, kind, word, per in (
                 ("retire", retire_n, newest.get(e["term"]) or on,
-                 "clean use" if e["term"] in newest else "ratified", "unused"),
+                 "clean use" if e["term"] in newest else "ratified", "unused", "after"),
                 ("review", review_n, reviewed or on,
-                 "reviewed" if reviewed else "ratified", "unreviewed")):
+                 "reviewed" if reviewed else "ratified", "unreviewed", "every")):
             if since is None:
-                print("%s: %s: no date" % (verb, e["term"]))
+                lines.append("%s: %s: no date" % (verb, e["term"]))
+            elif (now - since).days >= n:
+                lines.append("%s: %s: %s since %s (%s), %d days, %s %d days"
+                             % (verb, e["term"], word, since.isoformat(), kind,
+                                (now - since).days, per, n))
             else:
-                days = (now - since).days
-                if days < n:
-                    continue
-                print("%s: %s: %s since %s (%s), %d days, %s %d days"
-                      % (verb, e["term"], word, since.isoformat(), kind, days,
-                         "after" if verb == "retire" else "every", n))
-            if verb == "retire":
-                to_retire += 1
-            else:
-                to_review += 1
-    audited = written_date(data.get("audited"), shown, "audited")
+                continue
+            count[verb] += 1
     every = audit["cadence_days"]
     if audited is not None and (now - audited).days < every:
         state = "not due until %s" % (audited + datetime.timedelta(days=every)).isoformat()
-        print("audit: %s" % state)
+        lines.append("audit: %s" % state)
     else:
         state = "due"
         last = ("never audited" if audited is None
                 else "audited %s, %d days" % (audited.isoformat(), (now - audited).days))
         sample = pick(ratified(entries), audit["sample"], now.isoformat())
-        print("audit: due, %s, every %d days; %s, sample: %s"
-              % (last, every, audit["method"], ", ".join(sample) or "none"))
-    print("due: %d to retire, %d to review, the audit %s" % (to_retire, to_review, state))
+        lines.append("audit: due, %s, every %d days; %s, sample: %s"
+                     % (last, every, audit["method"], ", ".join(sample) or "none"))
+    lines.append("due: %d to retire, %d to review, the audit %s"
+                 % (count["retire"], count["review"], state))
+    print("\n".join(lines))
     return 0
 
 

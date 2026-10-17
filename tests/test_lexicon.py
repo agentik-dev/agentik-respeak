@@ -678,7 +678,11 @@ class DueClocks(Case):
                 ("", dated("cfg", reviewed="soon"), "entries[0] (cfg): reviewed must be a YYYY-MM-DD date"),
                 ("", dated("cfg", status="proposed", reviewed="5"), "reviewed must be"),
                 ("", dated("cfg", reviewed="2026-10-01T10:00:00"), "reviewed must be"),
-                ("audited: 2026/10/01\n", dated("cfg"), "audited must be a YYYY-MM-DD date"),
+                # an entry due ahead of the bad value: nothing printed before the refusal
+                ("audited: 2026/10/01\n", dated("cfg", ratified_by="human 2020-01-01"),
+                 "audited must be a YYYY-MM-DD date"),
+                ("", dated("cfg", ratified_by="human 2020-01-01") + dated("IU", reviewed="soon"),
+                 "entries[1] (IU): reviewed must be"),
                 ("", dated("cfg", reviewed="2026-13-01"), "unreadable: month must be in 1..12")):
             with self.subTest(entries=entries, head=head):
                 self.p.write(".claude/respeak/lexicon.yaml", head + "entries:\n" + entries)
