@@ -21,8 +21,9 @@ Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
   ratifies.
 - The three keys return to the shipped config, each tagged with its
   reader, and the script reads them from the plugin defaults and the
-  project file only. The seed lexicon's `uses:` field is not read; its
-  header points at the use record.
+  project file only. As with `/respeak:include`, the project file counts
+  only when git tracks it as a regular file inside the project. The seed
+  lexicon's `uses:` field is not read; its header points at the use record.
 
 ## 0.8.1 (2026-10-14)
 

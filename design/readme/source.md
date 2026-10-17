@@ -309,7 +309,7 @@ proposal is only a proposal until a human ratifies it.
 
 ## Status
 
-Status: version `0.9.0`, rendered `2026-10-16`, `304` unittest cases and `10` bash suites.
+Status: version `0.9.0`, rendered `2026-10-16`, `308` unittest cases and `10` bash suites.
 
 | Surface | State |
 |---|---|

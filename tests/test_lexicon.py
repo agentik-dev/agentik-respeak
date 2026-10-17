@@ -3,9 +3,10 @@ use record, and the ratification verdict.
 
 The script reads R/.claude/respeak/lexicon.yaml, else the plugin's seed, and
 `shorthand` from the plugin defaults with R/.claude/respeak/config.yaml over
-them; no user, folder or local layer. `use` appends to
-R/.claude/respeak/uses.jsonl. Each case builds a project under a temp HOME
-(CLAUDE_CONFIG_DIR inside it) and runs the script with --root.
+them, when git tracks it; no user, folder or local layer. `use` appends to
+R/.claude/respeak/uses.jsonl. Each case builds a project, a git work tree,
+under a temp HOME (CLAUDE_CONFIG_DIR inside it) and runs the script with
+--root.
 Exits: check 0 ok, 1 a problem; use 0; ratify 0 whatever the verdicts; each
 2 on a bad value, a bad lexicon or a refusal.
 """
@@ -26,6 +27,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN = os.path.join(REPO, "plugin")
 SCRIPT = os.path.join(PLUGIN, "scripts", "respeak-lexicon.py")
 PY_WRAPPER = os.path.join(PLUGIN, "scripts", "py")
+SHIPPED = os.path.join(PLUGIN, "config", "respeak.config.yaml")
 SEED_LINE = "lexicon: ok, 2 ratified of 150, the nearest two 6 apart (min 2)\n"
 USES_REL = os.path.join(".claude", "respeak", "uses.jsonl")
 
@@ -41,7 +43,8 @@ def entry(term, status="ratified", legibility=0.9):
 
 
 class Project:
-    """A project under a temp HOME, with a .claude/respeak/ directory."""
+    """A git work tree under a temp HOME, with a .claude/respeak/ directory;
+    config() writes the project file and stages it."""
 
     def __init__(self):
         self.root = os.path.realpath(tempfile.mkdtemp(prefix="respeak-lexicon-"))
@@ -53,9 +56,15 @@ class Project:
         os.makedirs(os.path.join(self.cfgdir, "respeak"))
         self.env = dict(os.environ)
         self.env.update({"HOME": self.home, "CLAUDE_CONFIG_DIR": self.cfgdir,
-                         "RESPEAK_PYTHON": sys.executable})
-        for k in ("RESPEAK_CONFIG", "RESPEAK_TODAY", "CLAUDE_PLUGIN_ROOT"):
+                         "RESPEAK_PYTHON": sys.executable, "GIT_CONFIG_NOSYSTEM": "1"})
+        for k in ("RESPEAK_CONFIG", "RESPEAK_TODAY", "CLAUDE_PLUGIN_ROOT", "GIT_DIR",
+                  "GIT_WORK_TREE", "GIT_INDEX_FILE"):
             self.env.pop(k, None)
+        self.git("init", "-q")
+
+    def git(self, *args):
+        subprocess.run(["git", *args], cwd=self.dir, env=self.env, check=True,
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, timeout=60)
 
     def cleanup(self):
         shutil.rmtree(self.root, ignore_errors=True)
@@ -67,8 +76,11 @@ class Project:
             f.write(textwrap.dedent(text))
         return path
 
-    def config(self, text):
-        return self.write(".claude/respeak/config.yaml", text)
+    def config(self, text, track=True):
+        path = self.write(".claude/respeak/config.yaml", text)
+        if track:
+            self.git("add", "-f", ".claude/respeak/config.yaml")
+        return path
 
     def lexicon(self, *entries):
         return self.write(".claude/respeak/lexicon.yaml", "version: 1\nentries:\n" + "".join(entries))
@@ -175,6 +187,75 @@ class LexiconCheck(Case):
                 r = self.p.run("check")
                 self.assertRan(r, 2, "")
                 self.assertIn(key, r.stderr)
+
+    def test_no_pyyaml_exits_2_with_one_line(self):
+        # a yaml module that cannot import, ahead of site-packages
+        stub = os.path.join(self.p.root, "stub")
+        os.makedirs(stub)
+        with open(os.path.join(stub, "yaml.py"), "w") as f:
+            f.write("raise ImportError('no yaml here')\n")
+        r = self.p.run("check", env=dict(self.p.env, PYTHONPATH=stub))
+        self.assertRan(r, 2, "")
+        self.assertEqual(r.stderr.splitlines(), [
+            "respeak-lexicon: PyYAML is required (python3 -m pip install pyyaml); "
+            "scripts/py picks an interpreter that has it"])
+
+    def test_each_key_the_script_reads_is_tagged_with_it(self):
+        with open(SHIPPED) as f:
+            lines = f.read().split("\n")
+        start = lines.index("shorthand: # project-only: governance never varies by folder or by user")
+        for key in ("max_entries", "min_token_edit_distance", "auto", "legibility_floor",
+                    "ratification"):
+            with self.subTest(key=key):
+                i = next(n for n in range(start, len(lines)) if lines[n].startswith("  %s:" % key))
+                block = [lines[i]]
+                for line in lines[i + 1:]:
+                    if not line.lstrip().startswith("#") or line.startswith("  #"):
+                        break
+                    block.append(line)
+                self.assertIn("[respeak-lexicon.py", "\n".join(block))
+                self.assertNotIn("no script checks it", "\n".join(block))
+
+    def test_a_config_git_does_not_track_is_not_read(self):
+        # as respeak-include.py's resolve: untracked or ignored, named and not read
+        note = ("respeak-lexicon: .claude/respeak/config.yaml is not tracked by git; not read, "
+                "the plugin defaults apply alone\n")
+        self.p.write(".gitignore", ".claude/respeak/config.yaml\n")
+        self.p.config("shorthand: {max_entries: 1}\n", track=False)
+        for env in (self.p.env, dict(self.p.env, GIT_DIR=os.path.join(self.p.root, "none"))):
+            r = self.p.run("check", env=env)
+            self.assertRan(r, 0, SEED_LINE)
+            self.assertEqual(r.stderr, note)
+        # tracked, it is read
+        self.p.git("add", "-f", ".claude/respeak/config.yaml")
+        self.assertRan(self.p.run("check"), 1)
+
+    def test_a_tracked_symlink_or_a_path_outside_is_refused(self):
+        outside = os.path.join(self.p.root, "outside")
+        os.makedirs(outside)
+        with open(os.path.join(outside, "config.yaml"), "w") as f:
+            f.write("shorthand: {max_entries: 1}\n")
+        link = os.path.join(self.p.respeak, "config.yaml")
+        os.symlink(os.path.join(outside, "config.yaml"), link)
+        # untracked, the symlink is not read
+        r = self.p.run("check")
+        self.assertRan(r, 0, SEED_LINE)
+        self.assertIn("not tracked by git; not read", r.stderr)
+        # tracked as a symlink: refused
+        self.p.git("add", ".claude/respeak/config.yaml")
+        r = self.p.run("check")
+        self.assertRan(r, 2, "")
+        self.assertIn("tracked as a symlink, not a regular file; refused", r.stderr)
+        # tracked as a regular file whose path now resolves outside the root: refused
+        self.p.git("rm", "-q", "--cached", ".claude/respeak/config.yaml")
+        os.remove(link)
+        self.p.config("shorthand: {max_entries: 1}\n")
+        moved = os.path.join(outside, "dot-claude")
+        os.rename(os.path.join(self.p.dir, ".claude"), moved)
+        os.symlink(moved, os.path.join(self.p.dir, ".claude"))
+        r = self.p.run("check")
+        self.assertRan(r, 2, "")
+        self.assertIn("resolves outside the git root", r.stderr)
 
     def test_a_bad_lexicon_exits_2(self):
         for text, why in (("entries: {}\n", "no `entries:` list"),

@@ -11,9 +11,12 @@ Inputs, and nothing else: R/.claude/respeak/lexicon.yaml, else the plugin's
 seed corpus/lexicon.yaml; and `shorthand` from the plugin defaults
 (config/respeak.config.yaml) with R/.claude/respeak/config.yaml over them,
 merged by the resolver's own layer merge as respeak-include.py's `resolve`
-does. Shorthand governance is project-only, so the user, userConfig,
-folder and local layers, the session and the environment never reach a key.
-R defaults to the current directory.
+does. As there, the project file is read only when git tracks it as a
+regular file: an untracked or ignored one is named on stderr and not read,
+and a tracked symlink, or a path that resolves outside R, is refused.
+Shorthand governance is project-only, so the user, userConfig, folder and
+local layers, the session and the environment never reach a key. R
+defaults to the current directory.
 
 `check` holds the ratified entries, the ones the digest gives the swarm, to
 two keys: `shorthand.max_entries`, the cap on their count, and
@@ -55,11 +58,18 @@ import os
 import re
 import sys
 
-import yaml
+try:
+    import yaml
+except ImportError:
+    sys.stderr.write(
+        "respeak-lexicon: PyYAML is required (python3 -m pip install pyyaml); "
+        "scripts/py picks an interpreter that has it\n")
+    sys.exit(2)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLUGIN_ROOT = os.path.dirname(HERE)
 RESOLVER = os.path.join(HERE, "respeak-config.py")
+INCLUDE = os.path.join(HERE, "respeak-include.py")
 DEFAULTS = os.path.join(PLUGIN_ROOT, "config", "respeak.config.yaml")
 SEED = os.path.join(PLUGIN_ROOT, "corpus", "lexicon.yaml")
 PROJECT_REL = os.path.join(".claude", "respeak", "config.yaml")
@@ -82,13 +92,33 @@ def warn(msg):
 # inputs
 # --------------------------------------------------------------------------
 
-def load_resolver():
-    spec = importlib.util.spec_from_file_location("respeak_config", RESOLVER)
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise Usage("no resolver at %s" % RESOLVER)
+        raise Usage("no %s at %s" % (name, path))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def load_resolver():
+    return load("respeak_config", RESOLVER)
+
+
+def tracked(root, rel):
+    """Whether git tracks rel under root as a regular file, by
+    respeak-include.py's own `tracked_file`: a tracked symlink, or a path
+    that resolves outside root, is refused. Outside a git work tree nothing
+    is tracked."""
+    inc = load("respeak_include", INCLUDE)
+    try:
+        inc.git_root(root)
+    except inc.Usage:
+        return False
+    try:
+        return inc.tracked_file(root, rel)
+    except inc.Usage as e:
+        raise Usage(str(e))
 
 
 def shorthand(root):
@@ -101,10 +131,13 @@ def shorthand(root):
         raise Usage("plugin defaults unreadable at %s %s" % (DEFAULTS, "; ".join(warnings)))
     project = os.path.join(root, PROJECT_REL)
     if os.path.lexists(project):
-        layer = rc.file_layer("project", project, root, warnings)
-        if not layer.present:
-            raise Usage("%s unreadable: %s" % (PROJECT_REL, "; ".join(warnings) or "not a file"))
-        layers.append(layer)
+        if tracked(root, PROJECT_REL):
+            layer = rc.file_layer("project", project, root, warnings)
+            if not layer.present:
+                raise Usage("%s unreadable: %s" % (PROJECT_REL, "; ".join(warnings) or "not a file"))
+            layers.append(layer)
+        else:
+            warn("%s is not tracked by git; not read, the plugin defaults apply alone" % PROJECT_REL)
     cfg, origins, applied = {}, {}, []
     for layer in layers:
         data = {k: v for k, v in layer.data.items() if k != "scopes"}

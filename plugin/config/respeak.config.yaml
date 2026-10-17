@@ -296,7 +296,8 @@ shorthand: # project-only: governance never varies by folder or by user
   max_entries: 150 # [respeak-lexicon.py check, ratify] the cap on ratified entries, the digest's terms
   min_token_edit_distance: 2 # [respeak-lexicon.py check, ratify] Levenshtein, case-folded, each ratified pair
   proposal_dir: .claude/respeak/proposals/ # [fixed path] in the project, never the plugin
-  ratification: human # human | auto. [instruction-only]: the agent never ratifies
+  ratification: human # human | auto. [instruction-only]: the agent never ratifies;
+                      # [respeak-lexicon.py check, ratify] a value outside the two exits 2; ratify prints it
   legibility_floor: 0.5 # [instruction-only] the agent proposes nothing below it;
                         # [respeak-lexicon.py ratify] an entry below it is not eligible
   auto: # [respeak-lexicon.py ratify] when a proposed entry is eligible; ratify writes nothing
