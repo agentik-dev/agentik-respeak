@@ -107,12 +107,10 @@ class LayerPrecedence(unittest.TestCase):
 
     def test_userconfig_env_beats_plugin(self):
         env = self.fx.env(CLAUDE_PLUGIN_OPTION_DEFAULT_MODE="bluf",
-                          CLAUDE_PLUGIN_OPTION_TECH_LEVEL="2",
-                          CLAUDE_PLUGIN_OPTION_AUTO_NARRATIVE="true")
+                          CLAUDE_PLUGIN_OPTION_TECH_LEVEL="2")
         res = self.fx.resolve(env=env)
         self.assertEqual(narrative(res, "default_mode"), "bluf")
         self.assertEqual(narrative(res, "tech_level"), 2)
-        self.assertIs(narrative(res, "auto_narrative"), True)
         self.assertIn("userConfig", res.origins["narrative.default_mode"])
 
     def test_user_file_beats_userconfig_env(self):
@@ -407,33 +405,6 @@ class GateDecision(unittest.TestCase):
         self.assertEqual(d["fail_on"], "error")
         self.assertTrue(any("fail_on" in w for w in res.warnings))
 
-    def test_block_on_defaults_to_introduced(self):
-        self.fx.proj("gate: {enabled: true}\n")
-        res = self.fx.resolve(target=self.fx.doc("a.md"))
-        d = rc.gate_decision(res)
-        self.assertEqual(d["block_on"], "introduced")
-        self.assertEqual(res.warnings, [])
-
-    def test_any_layer_may_set_block_on(self):
-        # same policy as fail_on: enforcement leniency is not project-only, so
-        # a folder of pasted third-party text can ask for the whole-file check
-        self.fx.proj("gate: {enabled: true}\n")
-        self.fx.folder("docs", "gate: {block_on: any}\n")
-        d = rc.gate_decision(self.fx.resolve(target=self.fx.doc("docs/a.md")))
-        self.assertEqual(d["block_on"], "any")
-        d = rc.gate_decision(self.fx.resolve(target=self.fx.doc("a.md")))
-        self.assertEqual(d["block_on"], "introduced")
-        self.fx.user("gate: {block_on: any}\n")
-        d = rc.gate_decision(self.fx.resolve(target=self.fx.doc("a.md")))
-        self.assertEqual(d["block_on"], "any")
-
-    def test_bad_block_on_falls_back_to_introduced(self):
-        self.fx.proj("gate: {enabled: true, block_on: everything}\n")
-        res = self.fx.resolve(target=self.fx.doc("a.md"))
-        d = rc.gate_decision(res)
-        self.assertEqual(d["block_on"], "introduced")
-        self.assertTrue(any("block_on" in w for w in res.warnings))
-
 
 class ExampleTree(unittest.TestCase):
     """Pins the table in examples/layered/README.md."""
@@ -500,8 +471,6 @@ class CLI(unittest.TestCase):
         r = self.run_cli("resolve", "--format", "json", *common)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(json.loads(r.stdout)["narrative"]["default_mode"], "bluf")
-        r = self.run_cli("resolve", "--format", "statusline", *common)
-        self.assertEqual(r.stdout.strip(), "bluf/t1 exec @docs/.respeak.yaml")
         r = self.run_cli("resolve", "--format", "line", *common)
         self.assertIn("mode=bluf tech=1 profile=exec", r.stdout)
         r = self.run_cli("resolve", "--format", "yaml", "--mode", "eli5", "--set", "narrative.tech_level=4", *common)
@@ -524,11 +493,10 @@ class CLI(unittest.TestCase):
         self.assertIn("<- docs/.respeak.yaml (profile exec)", out)
         self.assertIn("gate.enabled is project-only; ignored", out)
         self.assertIn("gate: enabled=false", out)
-        self.assertIn("block_on=introduced", out)
 
     def test_gate_subcommand_writes_config(self):
         self.fx.proj("gate: {enabled: true}\n")
-        self.fx.folder("docs", "gate: {fail_on: warn, block_on: any}\n")
+        self.fx.folder("docs", "gate: {fail_on: warn}\n")
         doc = self.fx.doc("docs/a.md")
         out_cfg = os.path.join(self.fx.root, "resolved.yaml")
         r = self.run_cli("gate", "--project", self.fx.project, "--for", doc,
@@ -537,7 +505,6 @@ class CLI(unittest.TestCase):
         d = json.loads(r.stdout)
         self.assertTrue(d["applies"])
         self.assertEqual(d["fail_on"], "warn")
-        self.assertEqual(d["block_on"], "any")   # the gate hook reads it from here
         self.assertTrue(os.path.isfile(out_cfg))
         with open(out_cfg) as f:
             self.assertIn("fail_on: warn", f.read())
@@ -548,7 +515,7 @@ class CLI(unittest.TestCase):
         self.fx.proj("gate: {enabled: true}\n"
                      "scopes:\n  - paths: ['docs/**']\n    gate: {allow: ['x']}\n")
         write(os.path.join(self.fx.project, ".claude", "respeak", "config.local.yaml"),
-              "gate: {block_on: any}\n")
+              "gate: {fail_on: warn}\n")
         self.fx.folder("docs", "gate: {fail_on: none, allow: ['.*']}\n")
         env_cfg = os.path.join(self.fx.root, "env.yaml")
         write(env_cfg, "gate: {enabled: false}\n")
@@ -574,53 +541,16 @@ class CLI(unittest.TestCase):
         d = json.loads(r.stdout)
         self.assertTrue(d["committed"])
         self.assertTrue(d["applies"])
-        self.assertEqual((d["fail_on"], d["block_on"]), ("error", "introduced"))
+        self.assertEqual(d["fail_on"], "error")
         dropped = [x.rsplit(": ", 1)[1] for x in d["dropped"]]
-        self.assertEqual(sorted(dropped), ["gate.allow", "gate.block_on", "gate.enabled",
-                                           "gate.fail_on", "gate.fail_on"])
+        self.assertEqual(sorted(dropped), ["gate.allow", "gate.enabled",
+                                           "gate.fail_on", "gate.fail_on", "gate.fail_on"])
         self.assertTrue(any(x.startswith(env_cfg) for x in d["dropped"]))
         self.assertTrue(any("invocation" in x for x in d["dropped"]))
         with open(out_cfg) as f:
             g = rc.yaml.safe_load(f)["gate"]
         self.assertIn("x", g["allow"])             # the project scope's allow stands
         self.assertNotIn(".*", g["allow"])
-
-    def test_validate_accepts_block_on_in_any_layer(self):
-        folder = os.path.join(self.fx.project, "docs", ".respeak.yaml")
-        write(folder, "gate: {block_on: any}\n")
-        r = self.run_cli("validate", folder)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("[folder]: ok", r.stdout)
-        self.assertNotIn("block_on", r.stdout)
-
-    def test_validate_hooks_session_start(self):
-        # 0.8.0: hooks.session_start is a known key at any layer; a non-boolean is refused
-        user = os.path.join(self.fx.cfgdir, "respeak", "config.yaml")
-        write(user, "hooks: {session_start: true}\n")
-        r = self.run_cli("validate", user)
-        self.assertEqual(r.returncode, 0, r.stdout)
-        self.assertNotIn("unknown top-level key", r.stdout)
-        for text in ('hooks: {session_start: "yes"}\n', "hooks: {session_start: 1}\n",
-                     "hooks: true\n",
-                     "scopes:\n  - paths: [docs/]\n    hooks: {session_start: \"no\"}\n"):
-            folder = os.path.join(self.fx.project, "docs", ".respeak.yaml")
-            write(folder, text)
-            r = self.run_cli("validate", folder)
-            self.assertEqual(r.returncode, 1, text + r.stdout)
-            self.assertIn("hooks", r.stdout)
-        resolve = ("resolve", "--format", "json", "--project", self.fx.project,
-                   "--for", self.fx.project)
-        r = self.run_cli(*resolve)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIs(json.loads(r.stdout)["hooks"]["session_start"], True)  # the user layer
-        os.remove(user)
-        r = self.run_cli(*resolve)
-        self.assertIs(json.loads(r.stdout)["hooks"]["session_start"], False)  # the default
-        # the resolver agrees with validate: a string is not a boolean true
-        self.fx.proj('hooks: {session_start: "true"}\n')
-        r = self.run_cli(*resolve)
-        self.assertIs(json.loads(r.stdout)["hooks"]["session_start"], False, r.stderr)
-        self.assertIn("hooks.session_start", r.stderr)
 
     def test_validate_policy_and_shape(self):
         good = os.path.join(self.fx.project, "docs", ".respeak.yaml")
@@ -821,12 +751,12 @@ class ProfilesAndGlobs(unittest.TestCase):
     def test_set_parsing(self):
         ns = type("A", (), {})()
         ns.mode = ns.profile = ns.context = None
-        ns.set = ["gate.allow=spine", "narrative.tone.formality=0.9", "narrative.auto_narrative=yes", "gate.include=docs/**"]
+        ns.set = ["gate.allow=spine", "narrative.tone.formality=0.9", "narrative.mode_select=yes", "gate.include=docs/**"]
         ov = rc.parse_overrides(ns)
         self.assertEqual(ov["gate"]["allow"], ["spine"])
         self.assertEqual(ov["gate"]["include"], ["docs/**"])
         self.assertEqual(ov["narrative"]["tone"]["formality"], 0.9)
-        self.assertEqual(ov["narrative"]["auto_narrative"], "yes")  # not the YAML-1.1 boolean
+        self.assertEqual(ov["narrative"]["mode_select"], "yes")  # not the YAML-1.1 boolean
 
     def test_user_scope_written_through_a_symlink_still_matches(self):
         link = os.path.join(self.fx.root, "link")
@@ -975,13 +905,11 @@ class V043Merge(unittest.TestCase):
         self.addCleanup(self.fx.cleanup)
 
     def test_bool_words_on_boolean_keys(self):
-        self.fx.proj("gate: {enabled: true}\nnarrative: {auto_narrative: true}\n")
+        self.fx.proj("gate: {enabled: true}\n")
         doc = self.fx.doc("a.md")
         for word, expect in (("no", False), ("off", False), ("false", False), ("yes", True), ("on", True), ("0", False)):
             res = self.fx.resolve(target=doc, overrides={"gate": {"enabled": word}})
             self.assertIs(rc.get_dotted(res.config, "gate.enabled"), expect, word)
-        res = self.fx.resolve(target=doc, overrides={"narrative": {"auto_narrative": "off"}})
-        self.assertIs(narrative(res, "auto_narrative"), False)
         res = self.fx.resolve(target=doc, overrides={"gate": {"enabled": "maybe"}})
         self.assertIs(rc.get_dotted(res.config, "gate.enabled"), True)
         self.assertTrue(any("not a boolean spelling" in w for w in res.warnings))

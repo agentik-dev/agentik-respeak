@@ -16,7 +16,7 @@ trap 'rm -rf "$work"' EXIT
 export RESPEAK_CACHE_DIR="$work/cache"
 export CLAUDE_CONFIG_DIR="$work/no-user-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
 export CLAUDE_PLUGIN_ROOT="$REPO_ROOT/plugin"
-unset RESPEAK_GATE RESPEAK_HOOKS CLAUDE_PROJECT_DIR RESPEAK_CONFIG CLAUDE_CODE_SESSION_ID XDG_STATE_HOME 2>/dev/null || true
+unset CLAUDE_PROJECT_DIR RESPEAK_CONFIG CLAUDE_CODE_SESSION_ID XDG_STATE_HOME 2>/dev/null || true
 
 proj="$work/proj"; mkdir -p "$proj/.claude/respeak" "$proj/docs" "$proj/research"
 printf 'version: 3\ngate: {enabled: true, include: ["**/*.md"], exclude: ["research/**"], fail_on: error}\n' > "$proj/.claude/respeak/config.yaml"
@@ -34,8 +34,9 @@ printf '# Bad\n\nThis design is load-bearing for the release.\n' > "$proj/docs/b
 out="$(cd "$proj" && bash "$CHECK")"; rc=$?
 check "a banned phrase blocks: exit 1" 1 "$rc"
 check_out "...and names the file" 'BLOCKED  docs/bad.md' "$out"
-out="$(cd "$proj" && RESPEAK_GATE=off bash "$CHECK")"; rc=$?
-check "session overrides are ignored by the check" 1 "$rc"
+out="$(cd "$proj" && RESPEAK_GATE_MAX_BYTES=4 bash "$CHECK" docs/bad.md 2>&1)"; rc=$?
+check "a file over RESPEAK_GATE_MAX_BYTES blocks: exit 1" 1 "$rc"
+check_out "...as too large to gate" 'too large to gate' "$out"
 
 # ADV6-1, ADV6-2: nothing outside the committed project file softens the
 # CI verdict: a folder file, an ignored local file, RESPEAK_CONFIG, or a

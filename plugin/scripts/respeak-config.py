@@ -2,7 +2,7 @@
 """respeak-config.py — resolve respeak's layered configuration for a path.
 
 Usage:
-  respeak-config.py resolve  [--project DIR] [--for PATH] [--format yaml|json|line|statusline]
+  respeak-config.py resolve  [--project DIR] [--for PATH] [--format yaml|json|line]
                              [--mode M] [--profile P] [--context C] [--set key=value]...
                              [--session ID]
   respeak-config.py explain  [--project DIR] [--for PATH] [--mode ...] [--set ...] [--session ID]
@@ -13,8 +13,8 @@ The contract, with worked examples, is docs/config-layers.md. In one screen:
 
   layer         file                                               may set
   1 plugin      ${CLAUDE_PLUGIN_ROOT}/config/respeak.config.yaml   everything
-  2 userConfig  CLAUDE_PLUGIN_OPTION_{DEFAULT_MODE,TECH_LEVEL,      narrative.default_mode,
-                AUTO_NARRATIVE} (claude plugin install --config)    .tech_level, .auto_narrative
+  2 userConfig  CLAUDE_PLUGIN_OPTION_{DEFAULT_MODE,TECH_LEVEL}      narrative.default_mode,
+                (claude plugin install --config)                    .tech_level
   3 user        ${CLAUDE_CONFIG_DIR:-~/.claude}/respeak/config.yaml tone keys
   4 ancestors   <dir>/.respeak.yaml above the project root          tone keys
   5 project     <project>/.claude/respeak/config.yaml               everything
@@ -114,25 +114,15 @@ PROFILE_KEYS = ("tech_level", "default_mode", "lexicon_access",
 USERCONFIG_ENV = (
     ("CLAUDE_PLUGIN_OPTION_DEFAULT_MODE", "narrative.default_mode"),
     ("CLAUDE_PLUGIN_OPTION_TECH_LEVEL", "narrative.tech_level"),
-    ("CLAUDE_PLUGIN_OPTION_AUTO_NARRATIVE", "narrative.auto_narrative"),
 )
 
 KNOWN_TOP_KEYS = {"version", "schema", "editorial_pass", "data", "narrative",
-                  "profiles", "modes", "style", "gate", "hooks", "shorthand", "scopes"}
-# hooks.<key>: a boolean each, settable at any layer
-HOOK_KEYS = ("session_start",)
+                  "profiles", "modes", "style", "gate", "shorthand", "scopes"}
 
 FAIL_ON_VALUES = ("none", "warn", "error")
 
-# What a gate verdict is measured against. `introduced` compares the write
-# with the file as it was and blocks only on hits this edit added, so a
-# document that already carries one (a banned term inside a heading, which
-# the verifier holds invariant) stays editable; `any` blocks on every hit in
-# the file. Any layer may set it, like fail_on.
-BLOCK_ON_VALUES = ("introduced", "any")
-
-# The style gate is a Markdown scanner; the hook's cheap pre-filter and the
-# resolver's gate decision agree on exactly this set (docs/config-layers.md).
+# The style gate is a Markdown scanner; respeak-check.sh and the resolver's
+# gate decision agree on exactly this set (docs/config-layers.md).
 MARKDOWN_EXTS = (".md", ".markdown", ".mdx")
 
 # The session provider (conventions section 3): agentik-session's resolved
@@ -351,8 +341,6 @@ def coerce_env(key, raw):
     if key.endswith("tech_level"):
         v = float(raw)
         return int(v) if v.is_integer() else v
-    if key.endswith("auto_narrative"):
-        return str(raw).strip().lower() in ("1", "true", "yes", "on")
     return raw
 
 
@@ -793,12 +781,6 @@ def merge(dst, src, prefix, layer, origins, warnings, dropped=None):
             warnings.append("%s: %s is a mapping in a lower layer but %s here; ignored"
                             % (layer.label, key, "null" if v is None else type(v).__name__))
             continue
-        if key.startswith("hooks.") and k in HOOK_KEYS and not isinstance(v, bool):
-            # a hook speaks only on a YAML boolean true, as validate says:
-            # "true" in quotes, yes or 1 is refused, never coerced
-            warnings.append("%s: hooks.%s must be true or false, not %r; ignored"
-                            % (layer.label, k, v))
-            continue
         if isinstance(dst.get(k), bool) and isinstance(v, str):
             # --set gate.enabled=no must not turn the gate ON: a string on a
             # boolean key is read as a boolean spelling or refused.
@@ -945,13 +927,8 @@ def gate_decision(res):
     if fail_on not in FAIL_ON_VALUES:
         res.warnings.append("gate.fail_on %r is not one of %s; using error" % (fail_on, "/".join(FAIL_ON_VALUES)))
         fail_on = "error"
-    block_on = g.get("block_on") or "introduced"
-    if block_on not in BLOCK_ON_VALUES:
-        res.warnings.append("gate.block_on %r is not one of %s; using introduced"
-                            % (block_on, "/".join(BLOCK_ON_VALUES)))
-        block_on = "introduced"
     out = {"applies": False, "enabled": bool(g.get("enabled")), "fail_on": fail_on,
-           "block_on": block_on, "rel_path": None, "reason": ""}
+           "rel_path": None, "reason": ""}
     if not out["enabled"]:
         out["reason"] = "gate.enabled is not true in the project config"
         return out
@@ -998,7 +975,6 @@ def summary(res):
         "tech": n.get("tech_level"),
         "profile": n.get("profile"),
         "context": n.get("context_default"),
-        "auto_narrative": bool(n.get("auto_narrative")),
         "gate": ("on:%s" % (g.get("fail_on") or "error")) if g.get("enabled") else "off",
         "from": "" if is_default else re.sub(r" \(profile [^)]*\)$", "", res.short(origin)),
     }
@@ -1010,16 +986,6 @@ def fmt_line(res):
              for k, v in s.items() if k != "from"]
     parts.append("from=%s" % (s["from"] or "plugin-default"))
     return " ".join(parts)
-
-
-def fmt_statusline(res):
-    s = summary(res)
-    out = "%s/t%s" % (s["mode"] or "?", s["tech"] if s["tech"] is not None else "?")
-    if s["profile"]:
-        out += " %s" % s["profile"]
-    if s["from"]:
-        out += " @%s" % s["from"]
-    return out
 
 
 def fmt_brief(res, gate=None):
@@ -1039,15 +1005,15 @@ def fmt_brief(res, gate=None):
     L.append("layers applied: " + ", ".join(present))
     s = summary(res)
     tone = get_dotted(res.config, "narrative.tone", {}) or {}
-    L.append("effective narrative: mode=%s tech_level=%s profile=%s context=%s tone(f=%s d=%s c=%s) auto_narrative=%s"
+    L.append("effective narrative: mode=%s tech_level=%s profile=%s context=%s tone(f=%s d=%s c=%s)"
              % (s["mode"], s["tech"], s["profile"], s["context"], tone.get("formality"), tone.get("directness"),
-                tone.get("confidence"), str(s["auto_narrative"]).lower()))
+                tone.get("confidence")))
     lex = get_dotted(res.config, "narrative.lexicon_access")
     if lex:
         L[-1] += " lexicon_access=%s" % lex
     if gate is not None:
-        L.append("gate: enabled=%s fail_on=%s block_on=%s applies=%s (%s)"
-                 % (str(gate["enabled"]).lower(), gate["fail_on"], gate["block_on"],
+        L.append("gate: enabled=%s fail_on=%s applies=%s (%s)"
+                 % (str(gate["enabled"]).lower(), gate["fail_on"],
                     str(gate["applies"]).lower(), gate["reason"]))
     else:
         L.append("gate: %s" % s["gate"])
@@ -1084,16 +1050,15 @@ def fmt_explain(res, gate=None):
     L.append("")
     s = summary(res)
     tone = get_dotted(res.config, "narrative.tone", {}) or {}
-    L.append("effective narrative: mode=%s tech_level=%s profile=%s context=%s tone(f=%s d=%s c=%s) auto_narrative=%s"
+    L.append("effective narrative: mode=%s tech_level=%s profile=%s context=%s tone(f=%s d=%s c=%s)"
              % (s["mode"], s["tech"], s["profile"], s["context"],
-                tone.get("formality"), tone.get("directness"), tone.get("confidence"),
-                str(s["auto_narrative"]).lower()))
+                tone.get("formality"), tone.get("directness"), tone.get("confidence")))
     lex = get_dotted(res.config, "narrative.lexicon_access")
     if lex:
         L[-1] += " lexicon_access=%s" % lex
     if gate is not None:
-        L.append("gate: enabled=%s fail_on=%s block_on=%s applies=%s (%s)"
-                 % (str(gate["enabled"]).lower(), gate["fail_on"], gate["block_on"],
+        L.append("gate: enabled=%s fail_on=%s applies=%s (%s)"
+                 % (str(gate["enabled"]).lower(), gate["fail_on"],
                     str(gate["applies"]).lower(), gate["reason"]))
     else:
         L.append("gate: %s" % s["gate"])
@@ -1150,21 +1115,6 @@ def guess_kind(path, env):
     return "project"
 
 
-def hooks_findings(label, hooks):
-    """(errors, warnings) for one `hooks:` block: a mapping of booleans."""
-    if hooks is None:
-        return [], []
-    if not isinstance(hooks, dict):
-        return ["%s: hooks must be a mapping, not %r" % (label, hooks)], []
-    errors, warnings = [], []
-    for k, v in hooks.items():
-        if k not in HOOK_KEYS:
-            warnings.append("%s: unknown key hooks.%s" % (label, k))
-        elif not isinstance(v, bool):
-            errors.append("%s: hooks.%s must be true or false, not %r" % (label, k, v))
-    return errors, warnings
-
-
 def validate_file(path, kind, env, plugin_root=None):
     """Returns (errors, warnings) for one file."""
     errors, warnings, notes = [], [], []
@@ -1193,18 +1143,12 @@ def validate_file(path, kind, env, plugin_root=None):
             apply_layer(cfg, origins, Layer("plugin", "plugin defaults", data=defaults),
                         defaults, os.path.dirname(path), [], [])
     apply_layer(cfg, origins, lay, data, os.path.dirname(path), merge_warnings, applied)
-    e, w = hooks_findings(path, data.get("hooks"))
-    errors.extend(e)
-    warnings.extend(w)
     scopes = data.get("scopes")
     if isinstance(scopes, list):
         for i, s in enumerate(scopes):
             if not isinstance(s, dict) or "paths" not in s:
                 errors.append("%s#scopes[%d]: needs a `paths` list" % (path, i))
                 continue
-            e, w = hooks_findings("%s#scopes[%d]" % (path, i), s.get("hooks"))
-            errors.extend(e)
-            warnings.extend(w)
             paths = s["paths"] if isinstance(s["paths"], list) else [s["paths"]]
             for p in paths:
                 if not isinstance(p, str) or not p:
@@ -1218,8 +1162,6 @@ def validate_file(path, kind, env, plugin_root=None):
     elif scopes is not None:
         errors.append("%s: scopes must be a list" % path)
     for w in merge_warnings:
-        if "must be true or false" in w:
-            continue  # hooks_findings reports it as an error, by path
         if "project-only" in w:
             errors.append(w)
         elif "not a known profile" in w:
@@ -1291,7 +1233,7 @@ def main(argv=None):
 
     p = sub.add_parser("resolve", help="print the effective configuration")
     add_common(p)
-    p.add_argument("--format", choices=("yaml", "json", "line", "statusline"), default="yaml")
+    p.add_argument("--format", choices=("yaml", "json", "line"), default="yaml")
     p.add_argument("--out", default=None, help="write the output to this file instead of stdout")
 
     p = sub.add_parser("explain", help="show every layer and which one set each override")

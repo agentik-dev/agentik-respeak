@@ -31,12 +31,6 @@
       "default": 3,
       "min": 1,
       "max": 5
-    },
-    "auto_narrative": {
-      "type": "boolean",
-      "title": "Auto-narrative at milestones",
-      "description": "When on, a Stop hook nudges a one-paragraph narrative in the effective mode after milestone turns. Same precedence as default_mode.",
-      "default": false
     }
   }
 }

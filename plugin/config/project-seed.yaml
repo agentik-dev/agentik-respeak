@@ -15,19 +15,11 @@ version: 3
 #   tech_level: 3
 
 gate:
-  enabled: false           # the PostToolUse style gate is opt-in per project;
-                           # /respeak:on gate tries it for one session first
+  enabled: false           # respeak-check.sh skips every file until this is true
   include: ["**/*.md"]     # add "**/*.mdx" / "**/*.markdown" to cover those; never non-Markdown
   exclude: []
   fail_on: error           # none | warn | error
-  block_on: introduced     # introduced: block only on hits this write added
-                           # (measured against the committed file); any: block
-                           # on every hit in the file
   allow: []
-
-# hooks:
-#   session_start: false   # true: name the lexicon at each session start
-
 # scopes:                  # path-scoped overrides; later entries win
 #   - paths: ["docs/**"]
 #     narrative: { profile: peer-engineer }

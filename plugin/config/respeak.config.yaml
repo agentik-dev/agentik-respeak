@@ -74,11 +74,6 @@ narrative:
                           # `tech_level: 2` gets exec's mode with tech_level 2.
   default_mode: technical # eli5 | bluf | technical
   mode_select: fixed      # fixed | compass (Diátaxis 2-question classifier, opt-in)
-  auto_narrative: false   # Stop hook nudges a one-paragraph narrative after
-                          # milestone turns (scripts/stop-narrative.sh); also
-                          # settable at install: --config auto_narrative=true.
-                          # RESPEAK_HOOKS=off or /respeak:off silences the hook
-                          # for one session (docs/config-layers.md, Session overrides)
   context_default: routine # per-invocation: incident | routine | celebration
                            # (Mailchimp: tone conditions on reader state;
                            #  incident forces plain language + decompression)
@@ -228,22 +223,10 @@ style:
     behavior_not_person: true
 
 gate:
-  # Enforcement of style.budgets and the banned-phrase corpus on Write|Edit,
-  # via the PostToolUse hook scripts/respeak-gate.sh (hooks/hooks.json).
-  # Every knob here maps to that script's behavior — no knob without a
-  # behavior, same contract as the rest of this file.
-  #
-  # The gate is per-project OPT-IN: this plugin-level default is `enabled:
-  # false`, and the hook itself does nothing unless a project's own
-  # `.claude/respeak/config.yaml` sets `enabled: true` (skills/init/SKILL.md
-  # seeds that file from this one, with the gate left off; a human turns it
-  # on once the project trusts its excludes/allow list). This file is never
-  # the one the hook reads for enforcement decisions on someone else's repo.
-  #
-  # Session overrides sit above every layer (docs/config-layers.md, "Session
-  # overrides"): RESPEAK_GATE=off|on and RESPEAK_HOOKS=off for one launch,
-  # /respeak:off [gate] and /respeak:on [gate] for the session you are in.
-  # `on` applies this block with `enabled` forced true; nothing else changes.
+  # What scripts/respeak-check.sh enforces on demand, by hand or in CI, and what
+  # the renderer's measure reads. No hook runs it. A project opts in with
+  # `enabled: true` in its own committed `.claude/respeak/config.yaml`; the check
+  # skips every file otherwise. Every knob maps to that script's behavior.
   enabled: false        # project-only: a user or folder layer cannot turn it on
   include: ["**/*.md"] # project-only. globs, matched relative to the project dir.
                         # The gate covers Markdown files only (.md .markdown .mdx,
@@ -253,17 +236,6 @@ gate:
   fail_on: error         # none | warn | error — passed straight to
                         # respeak-measure.py --fail-on. Any layer may set it,
                         # so a folder can soften to `warn` for its own files.
-  block_on: introduced   # introduced | any — what the verdict is measured
-                        # against. `introduced` hands measure a --baseline of
-                        # the file as it was (the committed version, else the
-                        # pre-edit text rebuilt from the Edit, else empty) and
-                        # blocks only on hits the write added, so a document
-                        # that already carries one — a banned term inside a
-                        # heading, which the editorial pass may not move —
-                        # stays editable, and the model is told about the
-                        # leftovers instead. `any` gates the whole file, the
-                        # behavior before v0.6. Any layer may set it.
-                        # `respeak-gate.sh --file` is whole-file either way.
   allow: []              # regexes; appends across layers (a user-level allow
                         # for a domain vocabulary is legitimate). A corpus
                         # rule whose pattern/phrase matches
@@ -271,15 +243,6 @@ gate:
                         # escape hatch for a domain term the shared corpus
                         # exceptions: don't cover yet — file the gap rather
                         # than leaving this as the permanent fix)
-
-hooks:
-  # Which of the plugin's always-on hooks speak. The gate and the Stop nudge
-  # keep their own keys (gate.enabled, narrative.auto_narrative).
-  session_start: false  # true: the SessionStart hook (scripts/lexicon-status.sh)
-                        # names the lexicon and its ratified-term count at each
-                        # session start, in a project with .claude/respeak/.
-                        # Any layer may set it; RESPEAK_HOOKS=off and
-                        # /respeak:off still silence it.
 
 shorthand: # project-only: governance never varies by folder or by user
   # The resolver merges every key below; each is tagged with what holds it.
