@@ -2,6 +2,18 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
+## 0.12.0 (2026-10-31)
+
+The machine lane, the gate hook and the lexicon tooling leave, on the owner's word of 2026-10-31. This is breaking; `0.x` may break on a minor.
+
+- No hooks ship: the PostToolUse style gate on every Write and Edit, the SessionStart lexicon note and the Stop narrative nudge are gone, with `hooks/hooks.json`, `respeak-gate.sh`, `lexicon-status.sh` and `stop-narrative.sh`.
+- The lexicon is gone: `respeak-lexicon.py`, `render-lexicon-digest.sh`, `corpus/lexicon.yaml`, the digest import, `/respeak:audit`.
+- With nothing left to silence or seed: `/respeak:on`, `/respeak:off`, `respeak-override.sh`, `respeak-session.sh`, `RESPEAK_HOOKS`, `RESPEAK_GATE`; `/respeak:init`, `project-seed.yaml`, `respeak-include.py propose`; `statusline.sh` and `--format statusline`. `/respeak:report` and `report-env.sh` leave too; no caller used them.
+- Keys with no reader: `shorthand.*`, `hooks.*`, `gate.block_on`, `narrative.auto_narrative`, `narrative.lexicon_access`, the userConfig `auto_narrative`.
+- `never_compress` is a top-level project-only key, without `reserved-metawords`. The agent and the skill both state the rule.
+- `/respeak:respeak` is one page, 55 lines. It keeps `arguments: [mode, source]` and names the `; <contract>` form callers use. Where the agent tool is refused, it follows the agent's file itself.
+- `respeak-check.sh` keeps its verdict and its exits, with the committed gate inside it. `respeak-render.sh`, `respeak-verify-edit.py`, `respeak-measure.py`, `respeak-config.sh`, `respeak-include.py` and `/respeak:include` stay for their callers. The include template moves to version 3, so a rendered include file reads stale until its author rewrites it.
+
 ## 0.11.0 (2026-10-17)
 
 - The repair channel: `shorthand.reserved_metawords` (CORRECTION,

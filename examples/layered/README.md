@@ -21,12 +21,9 @@ export CLAUDE_CONFIG_DIR=$PWD/examples/layered/home/.claude
 P=examples/layered/project
 bash scripts/respeak-config.sh explain --project $P --for $P/docs/exec/q3-summary.md
 bash scripts/respeak-config.sh explain --brief --for $P/docs/api/endpoints.md   # no --project: discovered
-bash scripts/respeak-config.sh resolve --project $P --for $P/docs/api/endpoints.md --format statusline
 bash scripts/respeak-config.sh gate    --project $P --for $P/notes/scratch.md
 bash scripts/respeak-config.sh validate $P/notes/.respeak.yaml            # exits 1: gate.enabled is project-only
 bash scripts/respeak-config.sh validate --kind user examples/layered/home/.claude/respeak/config.yaml
-CLAUDE_PROJECT_DIR=$P RESPEAK_GATE_TRACE=1 bash scripts/respeak-gate.sh --file $P/docs/overview.md   # the hook, as a command
-RESPEAK_GATE=on CLAUDE_PROJECT_DIR=$P RESPEAK_GATE_TRACE=1 bash scripts/respeak-gate.sh --file $P/notes/scratch.md   # session override: forced on for this run
 ```
 
 What each file gets, and which layer decided it:

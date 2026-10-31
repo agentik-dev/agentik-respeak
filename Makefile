@@ -12,7 +12,7 @@ ifeq ($(origin PYTHON),undefined)
 PYTHON := $(or $(VENV_PYTHON),$(shell python3 -c 'import sys; print(sys.executable)'))
 endif
 export PYTHON
-# Its bin dir first on PATH, so every recipe, and every hook a suite runs, skips the shim.
+# Its bin dir first on PATH, so every recipe skips the shim.
 export PATH := $(patsubst %/,%,$(dir $(PYTHON))):$(PATH)
 # The claude CLI `install` and `validate` run; the install suite passes a fake here.
 CLAUDE ?= claude
@@ -36,7 +36,7 @@ check-unlocked: test lint doclint hygiene plugin-version-check readme-fresh vali
 # the group at the wall clock (exit 124), so a hung suite or a slow claude fails the target.
 DEADLINE = bash plugin/scripts/respeak-deadline.sh
 
-# The bash suites run the hooks, which find `python3` on PATH: the export above puts $(PYTHON) first.
+# The bash suites run the scripts, which find `python3` on PATH: the export above puts $(PYTHON) first.
 test:
 	$(DEADLINE) 120 $(PYTHON) -m unittest discover tests </dev/null
 	@set -e; for t in tests/*.sh; do echo "== $$t"; $(DEADLINE) 120 bash "$$t" </dev/null; done

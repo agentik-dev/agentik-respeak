@@ -2,86 +2,33 @@
 
 <img src="assets/icon.svg" alt="" width="56" align="left">
 
-respeak is a Claude Code plugin for two-lane communication in agent swarms.
-Agents write to each other in governed shorthand, and every person gets a
-narrative written for them.
+respeak is a Claude Code plugin that renders agent work for a person. One skill and one translator agent write a narrative in ELI5, BLUF or technical mode, in a tone you set by layers. Error messages, security findings, user quotes and numbers with units are never compressed.
 
-## Why it exists
+The machine lane left in 0.12.0: the shorthand lexicon, its tooling and the style-gate hook are in git history, last at commit `4cd4ec3`, removed on the owner's word of 2026-10-31.
 
-A household runs several Claude Code plugins in unattended relay runs, where
-one session hands its work to the next. Agents that write to each other
-spend context on every token, so the pressure to compress is structural.
-They drift into shorthand, and the person supervising the run becomes the
-outsider.
+## What it does
 
-Two people describing the same abstract picture start at about forty words
-and finish, six rounds later, at two ("the skater"). Outsiders cannot read
-the evolved signs, because the meaning lives in the pair's shared history.
-Forcing prose on agents pays the attention cost on every message. Letting
-the dialect drift gives up auditing your own automation.
+`/respeak:respeak [eli5|bluf|technical] [text or file]` reads the source, resolves the tone for that file, hands both to the `respeak:respeak` agent and measures what comes back against the banned-phrase corpus before you see it. The agent runs in its own context window, so the session that called it pays for one narrative and nothing else.
 
-respeak takes both lanes. Agents use ratified shorthand to spend less
-context, and every person reads a narrative in their own mode. A feedback
-loop joins the lanes, and a style gate holds the human lane to its rules.
-
-## What respeak does
-
-The **machine lane**: agents may use shorthand *ratified* in a lexicon file
-and write everything else in full. Nothing intercepts traffic; every session
-loads a digest of the lexicon through a CLAUDE.md import. Entries are
-proposed, ratified, or retired, never silently edited, as in aviation
-phraseology and Q codes. The `never_compress` block keeps error messages,
-security findings, user quotes, and numbers with units verbatim.
-
-The **human lane**: a translator subagent renders the work in one of three
-modes:
-
-| Mode | Contract |
-| --- | --- |
-| `eli5` | One idea per sentence, one analogy at most, and the analogy is repaid: the next sentence says the real thing. |
-| `bluf` | Sentence one is the result, decision, or ask, with owner and deadline. A manager can forward it unedited. |
-| `technical` | Conclusion first, then evidence as `file:line`, then open questions. Technical readers get no fluff; they resent it most. |
-
-Every mode passes the same style gates. There are 234 banned phrases across
-22 categories (AI tells, from `delve` to `load-bearing`), each with a
-severity, and 60 replacement rules. Sentence and paragraph budgets come
-from Simplified Technical English and plain-language standards. Tone axes are behavior
-tables, and a config field with no observable behavior is deleted.
-
-The **loop**: while translating, the agent files proposals for unratified
-shorthand it had to decode, preferring the variant closest to plain English.
-A human ratifies, and the dialect drifts toward needing less translation.
-
-## Does it work?
-
-One field test (2026-08-31, n=1): a technical-mode editorial pass over a
-4,000-word internal design document. Treat the numbers as sizing evidence,
-not a benchmark.
-
-| Metric | Before | After |
+| Mode | The reader | The contract |
 | --- | --- | --- |
-| Banned phrases (error severity) | 3 | 0 |
-| Banned phrases (warn severity) | 9 | 1 (a deliberate, documented keep) |
-| Em-dashes per 1000 words | 19.9 | 3.1 |
-| Average sentence length (before the 2026-09-21 splitter) | 32.1 words | 24.5 words |
-| Headings, links, code, numbers changed | n/a | zero (`respeak-verify-edit.py` passes) |
+| `eli5` | a newcomer | one idea per sentence, at most one analogy, and the next sentence says the real thing |
+| `bluf` | a manager | the result, decision or ask first, with owner and deadline; forwardable unedited |
+| `technical` | a peer engineer | the conclusion first, then evidence as file:line or a command, then open questions |
 
-The pass kept "a genuine platform gap" because the corpus bans `genuinely`,
-not `genuine`. The sentence row predates the 2026-09-21 splitter, which
-reads each list item and table row as its own unit, so it does not compare
-with a current run. The document is no longer in the repository, so the row
-stays as measured.
+A caller may add a contract after a `;`, and a repository can render its README this way, under `claude -p`:
+
+```sh
+claude -p "/respeak:respeak technical design/readme/source.md; $(cat design/readme/contract.txt)" --allowedTools 'Read Write' --max-turns 8
+```
+
+A claim that work is done, fixed, passing or green is stated as fact only when the source holds the tool result that shows it; otherwise the narrative says claimed, not verified, and what would verify it.
 
 ## Install
 
-Prerequisites: Claude Code ≥ 2.1.196, a plugin path without spaces, bash
-3.2 or newer, and a python3 (3.9 or newer) with PyYAML; `/respeak:report`
-also needs `gh`. The scripts pick the first interpreter that imports PyYAML
-(override with `RESPEAK_PYTHON`). The translator runs as a Sonnet subagent
-in its own context window, so the swarm's context never pays for it.
+Prerequisites: Claude Code ≥ 2.1.196, a plugin path without spaces, bash 3.2 or newer, and a python3 (3.9 or newer) with PyYAML. The scripts pick the first interpreter that imports PyYAML (override with `RESPEAK_PYTHON`).
 
-Install from GitHub (these write to your `~/.claude` config). One
-marketplace, `agentik`, lists respeak and its sibling plugins:
+One marketplace, `agentik`, lists respeak and its sibling plugins:
 
 ```sh
 claude plugin marketplace add agentik-dev/agentik-commons
@@ -89,130 +36,26 @@ claude plugin install respeak@agentik
 # optionally: --config default_mode=bluf --config tech_level=2
 ```
 
-Before agentik-r1, this repository was its own marketplace. If you added
-it, remove it under the name `claude plugin marketplace list` shows for
-`agentik-dev/agentik-respeak`, then add and install as above. Two install
-paths would run every hook twice.
-
-From a checkout, `make install` installs `respeak@agentik`, or updates it
-when it is already installed. It never adds or removes a marketplace:
-without `agentik`, it prints the line that adds it and exits 2.
-`make doctor` prints one line per check: python, claude, marketplace,
-plugin, provider, config. It names an ID from before the switch with a
-warning.
+From a checkout, `make install` installs `respeak@agentik`, or updates it when it is already installed; it never adds or removes a marketplace. `make doctor` prints one line per check: python, claude, marketplace, plugin, provider, config.
 
 ```sh
 make install
 make doctor
 ```
 
-To try it for one session from a checkout, changing nothing persistent:
+The plugin needs no setup per project, and it ships no hooks: nothing runs until you call it. After pulling a change, run `claude plugin update respeak`: the installed copy under `~/.claude/plugins/cache` is a snapshot.
 
-```sh
-git clone https://github.com/agentik-dev/agentik-respeak "$RESPEAK_SRC"
-claude --plugin-dir "$RESPEAK_SRC/plugin"
-```
+## Skills and scripts
 
-Translation works at once. The lexicon, the gate, and a project baseline
-need a one-time setup per project:
-
-```
-/respeak:init
-```
-
-It creates `.claude/respeak/`, proposes `gate.include` from the human-lane
-files present, generates the lexicon digest, renders the include file, and
-offers the CLAUDE.md imports, gitignore entries for `*.local.yaml`, and a
-statusline segment. The SessionStart lexicon note is off until
-`hooks.session_start: true`. After pulling a change, run
-`claude plugin update respeak`: the installed copy under
-`~/.claude/plugins/cache` is a snapshot.
-
-## Commands and skills
-
-| Command | What it does |
+| What | Use |
 | --- | --- |
-| `/respeak:respeak` | Translate the session's latest outcome or a file into `eli5`, `bluf`, or `technical`. |
-| `/respeak:init` | Set up the project: state dirs, a sparse config listing the human-lane files, the lexicon and its digest, the include file. |
-| `/respeak:off` | Silence the respeak hooks for this session; with `gate`, only the style gate. |
-| `/respeak:on` | Undo `/respeak:off`; with `gate`, run the gate this session even where it is off. |
-| `/respeak:report` | File a bug, feature request, documentation note, or question on GitHub. |
-| `/respeak:include` | Write or check the repo's include file: its default writing rules, at most 1,500 bytes, for an `@` import. |
-| `/respeak:audit` | When the lexicon's audit is due, have a fresh agent decode today's sample and record what it decoded. |
-| `respeak:respeak` agent | The translator subagent the skill and natural-language asks reach. |
-
-```
-/respeak:respeak bluf                   # translate this session's latest outcome
-/respeak:respeak eli5 notes/plan.md     # translate a file for a newcomer
-/respeak:init                           # one-time project setup
-/respeak:off gate                       # only the style gate goes quiet
-/respeak:on gate                        # trial the gate for this session
-/respeak:report bug "gate blocks .mdx"  # kind and title preset
-```
-
-Or say it: "explain that last change to my manager." Every translation
-opens with a `📣 respeak · <mode>` line. For one launch,
-`RESPEAK_HOOKS=off claude` or `RESPEAK_GATE=off claude` does what
-`/respeak:off` does. `/respeak:report` files the issue with `gh`, with an
-environment footer and a privacy pass you confirm; project files attach
-only with `--include-content`.
-
-The scripts a reader runs, all under `plugin/scripts/`:
-
-```sh
-python3 plugin/scripts/respeak-measure.py path/to/doc.md           # the scanner, local and free
-python3 plugin/scripts/respeak-verify-edit.py <before> <after>     # exit 0 = the edit changed only prose
-bash plugin/scripts/respeak-check.sh --verify origin/main          # the gate over every doc, as CI runs it
-bash plugin/scripts/respeak-config.sh explain --for docs/exec/q3.md
-bash plugin/scripts/render-lexicon-digest.sh                       # after ratifying a proposal
-python3 plugin/scripts/respeak-lexicon.py check                    # the cap and the edit distance over ratified terms
-python3 plugin/scripts/respeak-lexicon.py use cfg --outcome clean  # one line in .claude/respeak/uses.jsonl
-python3 plugin/scripts/respeak-lexicon.py ratify                   # which proposals are eligible; it writes nothing
-python3 plugin/scripts/respeak-lexicon.py due                      # the retire, review and audit clocks; it writes nothing
-python3 plugin/scripts/respeak-lexicon.py audit < readings.txt     # a fresh decoder's readings: audits.jsonl and `audited:`
-```
-
-`respeak-verify-edit.py` checks that a style edit kept the structure. In
-`.md` it holds headings, block structure, link and image targets, fenced
-code, inline code, numbers, and front matter byte-identical. In code files
-it opens comments only. It does not check facts: an appended false
-paragraph or a "never" turned to "always" passes (review ADV6-4). Until
-that deferred invariant lands, facts rest on the translator's rule to add
-no fact and drop none. Proposals land in
-`.claude/respeak/proposals/<term>.yaml`. To accept one, move it into
-`.claude/respeak/lexicon.yaml` with `status: ratified` and regenerate the
-digest.
-
-## Enforcement
-
-**The gate hook** (`plugin/scripts/respeak-gate.sh`) is a `PostToolUse`
-hook on `Write|Edit` (`plugin/hooks/hooks.json`). It measures each Markdown
-file a tool call wrote and blocks a failing report with exit code 2, which
-Claude Code returns to the model as a correctable error. Setup problems
-never block. It is **opt-in per project**: only the project layer sets
-`gate.enabled: true`. `gate.block_on: introduced` blocks only on hits the
-write added; `block_on: any` judges the whole file.
-
-```yaml
-gate:
-  enabled: true
-  include: ["**/*.md"]     # globs, relative to the project dir
-  exclude: ["research/**"] # never gated
-  fail_on: error            # none | warn | error
-  block_on: introduced      # introduced | any — which hits are this write's business
-  allow: []                 # regexes that skip a rule for this project
-```
-
-**The scanner** counts prose only: code, blockquotes, front matter, HTML
-comments, and URLs are dropped, and each list item or table row is its own
-unit. `--fail-on {none,error,warn}` sets the exit; `--baseline BASE`
-reports `[new N, pre-existing M]` per rule; `--config` carries the
-project's `style.budgets` and `gate.allow`.
-
-**CI.** `plugin/scripts/respeak-check.sh` runs the gate over every Markdown
-file git knows about, from the committed configuration only. `--verify
-<ref>` also runs the verifier on each edit since the ref, and a block or a
-changed invariant exits 1.
+| `/respeak:respeak [mode] [source]` | render a narrative |
+| `/respeak:include [write\|check] [--out PATH]` | a static file of a repo's writing rules, at most 1,500 bytes, loaded by an `@` line |
+| `plugin/scripts/respeak-render.sh --mode M --source F --out F [--contract F]` | render with no session, for `make` targets; it measures and retries, exit 0 written, 1 still failing, 2 setup, 4 an account failure |
+| `plugin/scripts/respeak-verify-edit.py BEFORE AFTER` | prove an edit changed prose only: headings, links, fenced code, inline code and numbers byte-identical |
+| `plugin/scripts/respeak-check.sh [--verify REF] [FILE...]` | the style check from committed config, for a make target or CI; exit 0 clean, 1 a block, an error or a changed file, 2 setup |
+| `plugin/scripts/respeak-measure.py FILE --fail-on error` | the scanner: banned phrases, em-dash density, sentence length, in zero tokens |
+| `plugin/scripts/respeak-config.sh explain\|resolve\|gate\|validate` | show or check what the layers resolve to |
 
 ## Where the tone comes from
 
@@ -223,34 +66,22 @@ Configuration resolves from layers, and the layer nearest the target wins:
 | plugin defaults | `config/respeak.config.yaml` in the plugin | the shipped contract |
 | plugin userConfig | `claude plugin install respeak@agentik --config default_mode=bluf` | a quick personal default |
 | user | `~/.claude/respeak/config.yaml` | your default across every repo |
-| project | `.claude/respeak/config.yaml` | the project's baseline; the only place the gate turns on |
+| project | `.claude/respeak/config.yaml` | the project's baseline; the only place the check turns on |
 | project local | `.claude/respeak/config.local.yaml` (gitignored) | your override for one repo |
 | scopes | `scopes:` entries with `paths:` globs, applied right after their file | path-keyed overrides |
 | folder | `.respeak.yaml` in any folder from the project root down | a folder's own audience |
 | provider | the `respeak` section of `agentik-session`'s resolved file (major 2) | the session's tone; optional |
 | invocation | `/respeak:respeak bluf`, `--mode`, `--set` | this one render |
-| session | `/respeak:off`, `/respeak:on [gate]`, `RESPEAK_HOOKS`, `RESPEAK_GATE` | hooks on or off for this session |
 
-Folder, user, and provider layers set tone only; gate enablement and
-shorthand governance are project-only. The knobs are tone axes
-(formality, directness, confidence), `tech_level` 1–5 with audience
-profiles, per-mode sentence budgets, and shorthand governance. They live in
-[`plugin/config/respeak.config.yaml`](/plugin/config/respeak.config.yaml).
-The contract and worked examples: [`plugin/docs/config-layers.md`](/plugin/docs/config-layers.md);
-a runnable tree: [`examples/layered/`](/examples/layered/).
+Folder, user, and provider layers set tone only; `gate.enabled`, `gate.include`, `gate.exclude` and `never_compress` are project-only. The knobs are tone axes (formality, directness, confidence), `tech_level` 1–5 with audience profiles, and per-mode sentence budgets. They live in [`plugin/config/respeak.config.yaml`](/plugin/config/respeak.config.yaml). The contract and worked examples: [`plugin/docs/config-layers.md`](/plugin/docs/config-layers.md); a runnable tree: [`examples/layered/`](/examples/layered/).
 
 ## Design of record
 
-- [`docs/architecture.md`](/docs/architecture.md): the two lanes, the
-  lexicon, the translator, and the influence model.
-- [`research/synthesis/design-principles.md`](/research/synthesis/design-principles.md):
-  twelve principles and five named risks.
-- `design/packets/`: one build packet per change, with its rulings and
-  acceptance lines.
-- `history/sittings/`: one charter per working session; each handover
-  records the choices made inside the design and who consumes them.
-- [`docs/references.md`](/docs/references.md): the published sources
-  behind each design concept.
+- [`docs/architecture.md`](/docs/architecture.md): the translator, the corpus, the layers, the callers.
+- [`docs/references.md`](/docs/references.md): the published sources behind each design concept.
+- `research/`: the source studies; they keep their words, the machine lane's included.
+- `design/packets/`: one build packet per change, with its rulings and acceptance lines; `r19-cut.md` is the cut.
+- `history/sittings/`: one charter per working session.
 
 ## Tests
 
@@ -260,85 +91,47 @@ Each file runs alone in seconds:
 | --- | --- |
 | `tests/test_measure_gate.py` | the scanner and its budgets |
 | `tests/test_corpus.py` | the shipped banned-phrase rules |
-| `tests/test_verify_edit.py` | the edit-safety invariants, per format |
-| `tests/test_config_layers.py` | the layered configuration resolver |
-| `tests/test_provider_layer.py` | the session provider layer |
-| `tests/test_include.py` | `/respeak:include`: the render, the cap, the exits, the tracked inputs, `propose` |
-| `tests/test_lexicon.py` | `respeak-lexicon.py`: the cap, the edit distance, the use record, the ratification verdict |
-| `tests/test_readme.py` | this README: the status line, the icon, the size, no sibling path |
-| `tests/test_gate_hook.sh` | the gate hook under the resolver |
-| `tests/test_hooks.sh` | the narrative nudge, the statusline, the SessionStart key |
-| `tests/test_overrides.sh` | `/respeak:off`, `/respeak:on` and the environment overrides |
-| `tests/test_check.sh` | `respeak-check.sh` and its `--verify` |
-| `tests/test_render.sh` | the bounded spawns, the renderer's breakers, the README render |
-| `tests/test_readme_fresh.sh` | every freshness verdict |
-| `tests/test_doctor.sh` | the six doctor lines |
-| `tests/test_install.sh` | `make install`: add, update, refuse |
-| `tests/test_report_env.sh` | the report target and its footer |
-| `tests/test_bounded.sh` | the wall, the lock and the exit of `scripts/bounded` |
-
-```sh
-python3 -m unittest tests.test_verify_edit
-bash tests/test_render.sh
-make check
-```
-
-`make check` runs `test`, `lint`, `doclint`, `hygiene`, `readme-fresh` and
-`validate` under `scripts/bounded`: one run per tree, an 840 s wall, held
-off above load 4 x cores.
+| `tests/test_verify_edit.py` | the prose-only proof |
+| `tests/test_config_layers.py` | the layers, the key policy, `never_compress` |
+| `tests/test_provider_layer.py` | the optional session provider |
+| `tests/test_include.py` | the include file |
+| `tests/test_plugin_shape.py` | what ships and what callers run |
+| `tests/test_readme.py` | this README's status line and shape |
+| `tests/test_hygiene.py` | the name and path lint |
+| `tests/test_render.sh` | the renderer, with a fake runner |
+| `tests/test_check.sh` | the committed verdict and the verifier |
+| `tests/test_doctor.sh` | `make doctor` |
+| `tests/test_install.sh` | `make install`, with a fake `claude` |
+| `tests/test_readme_fresh.sh` | the README freshness check |
+| `tests/test_bounded.sh` | the vendored breaker |
 
 ## Conventions shared with the sibling plugins
 
-respeak is one of several plugins built to the same conventions.
-`scripts/hygiene` (the name and path lint) and `scripts/doclint` (charters,
-packets, links) are byte-identical across them, pinned by hash in the
-Makefile. The lint holds generic patterns only; the names private to one
-owner stay outside the repo, in the list `$AGENTIK_HYGIENE_PRIVATE` names
-(else `~/.config/agentik/hygiene-private.tsv`), and `--require-private`
-refuses to scan without it. Each README is rendered from its source, and the sidecar
-`design/readme/rendered.sha256` holds the two hashes `make check` reads.
-The one sibling respeak reads is `agentik-session`, major 2, as the
-optional provider of the session's tone. Nothing breaks without it.
+respeak is one of several plugins built to the same conventions. `scripts/hygiene` (the name and path lint) and `scripts/doclint` (charters, packets, links) are byte-identical across them, pinned by hash in the Makefile. Each README is rendered from its source, and the sidecar `design/readme/rendered.sha256` holds the two hashes `make check` reads. The one sibling respeak reads is `agentik-session`, major 2, as the optional provider of the session's tone. Nothing breaks without it.
 
 ## What can go wrong
 
-The risk register
-([`research/synthesis/design-principles.md`](/research/synthesis/design-principles.md)
-§4) ranks translator error high: a confident wrong BLUF is worse than
-shorthand. `never_compress`, the `UNVERIFIED` fence, and the verifier limit
-it; spot-check a narrative against the evidence it cites. The gate is
-opt-in, so a project that never turns it on gets no enforcement. A
-proposal is only a proposal until a human ratifies it.
+A confident wrong BLUF is worse than the raw transcript. `never_compress` and the verifier limit it; spot-check a narrative against the evidence it cites. The style check is opt-in per project and runs only when something calls it, so a project that never calls it gets no enforcement.
 
 ## Status
 
-Status: version `0.11.0`, rendered `2026-10-17`, `362` unittest cases and `10` bash suites.
+Status: version `0.12.0`, rendered `2026-10-31`, `275` unittest cases and `6` bash suites.
 
 | Surface | State |
 |---|---|
-| Translator subagent, three modes | Working |
-| Style gates and corpus | Working |
-| Buried-lede test and data-rendering contract | Working |
-| Lexicon proposal flow | Working |
-| Skills: `respeak:respeak`, `/respeak:init`, `/respeak:report`, `/respeak:off`, `/respeak:on`, `/respeak:include`, `/respeak:audit` | Working |
-| Hooks: SessionStart lexicon status (off by default), PostToolUse style gate (opt-in), Stop narrative nudge (off by default) | Working |
-| Statusline script | Working |
+| Translator agent, three modes | Working |
+| Corpus and scanner | Working |
+| Skills: `respeak:respeak`, `/respeak:include` | Working |
 | Measure and verify tools, with their suites | Working |
 | Headless renderer: `respeak-render.sh` wraps `claude -p` | Working |
 | Configuration resolver: `respeak-config.sh resolve\|explain\|gate\|validate` | Working |
-
-Not yet built. [`NICE_TO_HAVE.md`](/NICE_TO_HAVE.md) holds what is left of
-shorthand governance.
-
-- `respeak compile`: the corpus as a Vale style package
-- A display-only translation hook
 
 See CHANGELOG.md for what each version changed and why.
 
 ## Layout
 
 ```
-.claude/respeak/           this repo's respeak layer: the human-lane scope, the lexicon digest
+.claude/respeak/           this repo's respeak layer: the human-lane scope
 .hygiene-allow             the names scripts/hygiene permits, per path
 .python-version            the pyenv virtualenv the checks run under (3.12, PyYAML)
 CLAUDE.md                  how a session in this repo writes and checks the docs
@@ -347,11 +140,10 @@ assets/icon.svg            the project icon
 plugin/                    the plugin, self-contained: what an install copies
 plugin/.claude-plugin/     manifest + userConfig
 plugin/agents/respeak.md   the translator
-plugin/skills/             respeak, init, off, on, report, include, audit
-plugin/hooks/hooks.json    lexicon status, milestone narrative, style gate
-plugin/scripts/            resolver, measure, verify-edit, gate, render, check, doctor, include, lexicon
-plugin/config/             plugin defaults, the /respeak:init seed, the include template
-plugin/corpus/             banned phrases, replacements, lexicon, style maps
+plugin/skills/             respeak, include
+plugin/scripts/            resolver, measure, verify-edit, render, check, doctor, include
+plugin/config/             plugin defaults, the include template
+plugin/corpus/             banned phrases, replacements, style maps
 plugin/docs/               the configuration contract
 scripts/readme-render.sh   make readme: the status line, the render, the stamp
 scripts/readme-fresh.sh    the README freshness check
@@ -366,8 +158,7 @@ history/sittings/          one charter per working session
 research/                  11 source studies, 4 synthesis passes
 ```
 
-`make readme` renders this README from `design/readme/source.md` in
-technical mode; `make check` refuses a README older than its source.
+`make readme` renders this README from `design/readme/source.md` in technical mode; `make check` refuses a README older than its source.
 
 ## License
 

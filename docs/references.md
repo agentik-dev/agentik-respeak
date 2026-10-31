@@ -1,5 +1,7 @@
 # respeak references
 
+The sources on shorthand and the machine lane stay as the record of a lane that left in 0.12.0 (`design/packets/r19-cut.md`).
+
 The sources behind each design concept, fetched and read during the research runs (2026-08-31); the distilled studies live in `research/sources/`.
 
 **Why swarms drift into shorthand (linguistics of convention)**
