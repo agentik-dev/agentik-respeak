@@ -10,6 +10,7 @@ outcomes its README promises cannot drift.
 
 Run: python3 -m unittest discover tests -v
 """
+import ast
 import importlib.util
 import json
 import os
@@ -572,6 +573,18 @@ class CLI(unittest.TestCase):
         self.assertIn("absolute or ~-prefixed", r.stdout)
         r = self.run_cli("validate", os.path.join(PLUGIN, "config", "respeak.config.yaml"))
         self.assertEqual(r.returncode, 0, r.stdout)
+
+    def test_the_resolver_calls_only_what_it_defines(self):
+        # the statusline format left with statusline.sh, and its branch with it
+        with open(RESOLVER, encoding="utf-8") as f:
+            source = f.read()
+        tree = ast.parse(source)
+        defined = {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}
+        called = {n.func.id for n in ast.walk(tree)
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                  and n.func.id.startswith("fmt_")}
+        self.assertEqual(called - defined, set())
+        self.assertNotIn("statusline", source)
 
     def test_project_discovery_without_flag(self):
         self.fx.proj("narrative: {default_mode: bluf}\n")

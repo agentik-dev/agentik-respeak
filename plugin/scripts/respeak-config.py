@@ -137,7 +137,7 @@ SESSION_ID_ENV = ("CLAUDE_CODE_SESSION_ID",)
 SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 # PyYAML's C loader parses the 230-line plugin config in a few milliseconds;
-# the pure-Python one takes ~100 ms, which the statusline would pay per refresh.
+# the pure-Python one takes ~100 ms, which respeak-check.sh would pay per file.
 _Loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 
@@ -1286,10 +1286,8 @@ def main(argv=None):
             text = yaml.safe_dump(res.config, sort_keys=False, default_flow_style=False)
         elif args.format == "json":
             text = json.dumps(res.config, indent=2) + "\n"
-        elif args.format == "line":
-            text = fmt_line(res) + "\n"
         else:
-            text = fmt_statusline(res) + "\n"
+            text = fmt_line(res) + "\n"
         if args.out:
             with open(args.out, "w") as f:
                 f.write(text)
