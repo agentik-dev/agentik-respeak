@@ -11,17 +11,16 @@ allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/py respeak-include.py *)
 
 # respeak: the repo's include file
 
-The include file holds this repo's default writing rules: the two lanes, the
+The include file holds this repo's default writing rules: the
 default mode for its reader, and the other modes. It is rendered from the
 plugin defaults and the repo's git-tracked `.claude/respeak/config.yaml`
 only, and it ships in the repo, so a reader without respeak still gets the
 rules. No personal layer reaches it: not `config.local.yaml`, the user file,
 the plugin's userConfig, the session or the environment. No model runs.
 
-Before a `write`, tell the author to commit `.claude/respeak/config.yaml`
-and, when the repo has a lexicon, `.claude/respeak/lexicon-active.md`: the
-render reads only what git tracks, and `write` names on stderr each one that
-differs from HEAD (it still writes, exit 0).
+Before a `write`, tell the author to commit `.claude/respeak/config.yaml`:
+the render reads only what git tracks, and `write` names it on stderr when
+it differs from HEAD (it still writes, exit 0).
 
 Run exactly this command and relay its output to the user as written. When
 `$ARGUMENTS` is empty, run it with `check`.

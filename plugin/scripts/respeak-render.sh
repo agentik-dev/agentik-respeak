@@ -1,6 +1,6 @@
 #!/bin/bash
 # Headless respeak renderer for the API lane — no interactive Claude Code
-# session available (CI, or a swarm's own post-processing step).
+# session available (CI, or a make target).
 #
 # Usage:
 #   respeak-render.sh --mode {eli5|bluf|technical} --source <file> --out <file>

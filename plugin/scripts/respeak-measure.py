@@ -47,10 +47,9 @@ the file and pass the result:
   classify the document's hits against it. A rule's hits beyond the
   baseline's count for the same rule are "introduced"; the rest are
   pre-existing, reported but never counted by --fail-on. A failing budget
-  counts only when its value rose above the baseline's. This is what the
-  gate hook passes (`gate.block_on: introduced`), with the committed
-  version of the file as the baseline, so an edit is blocked for what it
-  adds, not for what the file already carried. Takes exactly one document.
+  counts only when its value rose above the baseline's, so an edit is
+  judged on what it adds, not on what the file already carried. Takes
+  exactly one document.
 
 Per-entry `exceptions:` (list of regexes, already in the corpus) exempt a
 hit whose surrounding sentence also matches one of the entry's exceptions —
@@ -175,8 +174,8 @@ def rule_text(entry) -> str:
 
 class SetupError(Exception):
     """A problem with the inputs (corpus, config, or document), as opposed to
-    a style-gate verdict. main() maps it to exit 2 so the gate hook fails
-    open; exit 1 is reserved for a real verdict."""
+    a style-gate verdict. main() maps it to exit 2 so the caller reads no
+    verdict; exit 1 is reserved for a real verdict."""
 
 
 def allowed_by_gate(entry, allow_regexes) -> bool:
@@ -444,9 +443,9 @@ def main():
                 pass
 
     # Every failure that is not a style verdict exits 2, including ones
-    # nobody anticipated: the gate hook reads exit 1 as "the document failed
-    # the gate" and blocks the write, so an uncaught traceback (which CPython
-    # exits 1 for) would turn a broken corpus into a blocked edit. Printing
+    # nobody anticipated: respeak-check.sh reads exit 1 as "the document failed
+    # the gate", so an uncaught traceback (which CPython exits 1 for) would
+    # turn a broken corpus into a blocked file. Printing
     # sits inside the same guard for the same reason.
     try:
         corpus = load_yaml(corpus_path)

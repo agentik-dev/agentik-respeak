@@ -67,7 +67,7 @@ data:
 
 narrative:
   profile: peer-engineer  # a name from `profiles:` below. Sugar: the profile's
-                          # fields (tech_level, default_mode, lexicon_access,
+                          # fields (tech_level, default_mode,
                           # reading_level_grade, address) are filled in UNDER
                           # any explicit key written in the same file/layer, so
                           # a folder file saying `profile: exec` plus
@@ -91,19 +91,16 @@ narrative:
 profiles:
   exec:
     tech_level: 1
-    lexicon_access: forbidden
     reading_level_grade: 9
     default_mode: bluf
     address: you
   peer-engineer: # fills the tech_level-3 gap the three modes leave open
     tech_level: 3
-    lexicon_access: expand-first-use
     reading_level_grade: null
     default_mode: technical
     address: you
-  author: # tech_level-5: the opt-in shorthand reader
+  author: # tech_level-5: the one who wrote it
     tech_level: 5
-    lexicon_access: inline # the only profile where the two lanes may converge
     reading_level_grade: null
     default_mode: technical
     address: you
@@ -123,7 +120,7 @@ modes:
     common_ground_opener: true    # Maxwell: open with something the reader knows
     metaphor_budget: 1            # the one paid-for analogy...
     analogy_must_close: true      # ...and it must say what it maps to
-    lexicon_terms: forbidden      # zero shorthand, zero undefined abbreviations
+    undefined_abbreviations: forbidden
     contractions: allowed
     checks: # LLM-judge checks, not lint
       - understand-feel-do        # what happened / why you care / what next
@@ -168,7 +165,6 @@ modes:
     structure: finding-first    # conclusion → evidence file:line → open questions
     open_questions_require_test: true # end claims with a falsifiable check
     metaphor_budget: 0
-    lexicon_terms: expand-first-use # ratified terms free after first expansion
     passive_allowed_when: agent-unknown # STE descriptive rule; never for style
     procedural: # applies to embedded steps in any mode
       active_voice: 1.0 # STE: instructions 100% active/imperative
@@ -190,7 +186,7 @@ style:
   contractions: allowed
   negative_contractions: never # GOV.UK: "cannot", never "can't" — misread as opposite
   positive_form: true          # no double negatives
-  same_term_same_concept: true # plainlanguage #11 + STE; lint against lexicon
+  same_term_same_concept: true # plainlanguage #11 + STE
   quoting_exempt: true         # quotes/code blocks exempt from bans
   readability_metrics: [flesch_kincaid, gunning_fog] # DECLARED, NOT COMPUTED:
                         # no script computes a grade; respeak-measure.py counts
@@ -244,59 +240,17 @@ gate:
                         # exceptions: don't cover yet — file the gap rather
                         # than leaving this as the permanent fix)
 
-shorthand: # project-only: governance never varies by folder or by user
-  # The resolver merges every key below; each is tagged with what holds it.
-  #   [instruction-only] the translator agent's prompt names it; no script checks it
-  #   [fixed path]       the scripts and the agent use a fixed path; this key is not read
-  #   [respeak-lexicon.py VERB] scripts/respeak-lexicon.py reads it in that verb
-  # A key nothing reads is not shipped (a knob with no behaviour is removed). A
-  # file that sets an unknown key gets: dropped as project-only from a user or
-  # folder layer, merged and unread from a project layer.
-  lexicon: corpus/lexicon.yaml # [fixed path] .claude/respeak/lexicon.yaml, else this seed
-  max_entries: 150 # [respeak-lexicon.py check, ratify] the cap on ratified entries, the digest's terms
-  min_token_edit_distance: 2 # [respeak-lexicon.py check, ratify] Levenshtein, case-folded, each ratified pair
-  reserved_metawords: [CORRECTION, SAY-AGAIN, UNVERIFIED] # [respeak-lexicon.py check, ratify] the repair
-                      # channel, never_compress's reserved-metawords: words with no whitespace or shell
-                      # character; a ratified term nearer one than min_token_edit_distance is a problem,
-                      # a proposed one not eligible. [instruction-only] the agent passes each verbatim
-  register_marker: required # required | optional. [instruction-only] when required, a narrative keeping a
-                            # ratified term unexpanded ends its marker line ` · shorthand`;
-                            # [respeak-lexicon.py check] a value outside the two exits 2
-  readback_required_for: [irreversible-actions, security-findings, escalations-to-human] # [respeak-lexicon.py use]
-                      # slugs, checked each call; `use --for CLASS` refuses a class not listed, or a
-                      # clean use without --readback. [instruction-only] a use in an item of a listed
-                      # class is clean only with readback, its item adding ` for <class>`
-  decompress_on: [escalation-to-human, incident, repeated-fidelity-failure, new-partner] # [respeak-lexicon.py use]
-                      # only these four, checked each call; with repeated-fidelity-failure, `use` names
-                      # a term with 2 failure uses. [instruction-only] the agent expands every term in
-                      # a listed case, whatever narrative.lexicon_access says
-  proposal_dir: .claude/respeak/proposals/ # [fixed path] in the project, never the plugin
-  ratification: human # human | auto. [instruction-only]: the agent never ratifies;
-                      # [respeak-lexicon.py check, ratify] a value outside the two exits 2; ratify prints it
-  legibility_floor: 0.5 # [instruction-only] the agent proposes nothing below it;
-                        # [respeak-lexicon.py ratify] an entry below it is not eligible
-  auto: # [respeak-lexicon.py ratify] when a proposed entry is eligible; ratify writes nothing
-    uses: 5                       # clean uses in .claude/respeak/uses.jsonl
-    fidelity_failures_allowed: 0  # failure uses it may have
-    readback_evidence: true       # true: only a clean use recorded with readback counts
-  retire_after_days_unused: 180 # [respeak-lexicon.py due] a ratified entry with no clean use this long is due to retire
-  review_cadence_days: 90 # [respeak-lexicon.py due] a ratified entry unreviewed this long is due for review
-  legibility_audit: # [respeak-lexicon.py due] the lexicon's `audited:` date this old, the audit is due
-    cadence_days: 30       # days between audits
-    method: fresh-decoder  # the only method: a fresh agent decodes the sample unaided
-    sample: 10             # ratified terms put to it, chosen by the day
-  # never_compress: [instruction-only] the agent keeps each class verbatim;
-  # respeak-verify-edit.py also holds numbers across an editorial pass.
-  # reserved-metawords is the list shorthand.reserved_metawords names.
-  never_compress: # TJC do-not-use format: each ban carries its failure story
-    - { class: error-messages-and-stack-traces, failure_mode: verbatim evidence lost }
-    - { class: security-findings, failure_mode: high-stakes content must survive any reader }
-    - { class: user-quotes, failure_mode: misattribution }
-    - { class: numbers-with-units, failure_mode: bare magnitudes; TJC trailing-zero precedent }
-    - { class: safety-and-caution-instructions, failure_mode: never buried or shortened (STE) }
-    - { class: ask-owner-and-deadline, failure_mode: BLUF ask stripped in compression }
-    - { class: identifiers-novel-decisions-negations, failure_mode: high-surprisal content is where short encodings become unrecoverable (Piantadosi 2011) }
-    - { class: reserved-metawords, failure_mode: repair channel must never be repurposed }
+# project-only. The translator keeps each class verbatim in every mode, whatever a
+# length budget says; respeak-verify-edit.py also holds numbers across an editorial
+# pass. TJC do-not-use format: each ban carries its failure story.
+never_compress:
+  - { class: error-messages-and-stack-traces, failure_mode: verbatim evidence lost }
+  - { class: security-findings, failure_mode: high-stakes content must survive any reader }
+  - { class: user-quotes, failure_mode: misattribution }
+  - { class: numbers-with-units, failure_mode: bare magnitudes; TJC trailing-zero precedent }
+  - { class: safety-and-caution-instructions, failure_mode: never buried or shortened (STE) }
+  - { class: ask-owner-and-deadline, failure_mode: BLUF ask stripped in compression }
+  - { class: identifiers-novel-decisions-negations, failure_mode: high-surprisal content is where short encodings become unrecoverable (Piantadosi 2011) }
 
 scopes: [] # path-scoped overrides declared centrally, the analog of a
            # .claude/rules/*.md `paths:` frontmatter. Each entry needs `paths`

@@ -9,8 +9,5 @@ __pycache__/
 !examples/layered/**/config.local.yaml
 !examples/layered/**/.respeak.local.yaml
 
-# /respeak:report drafts (written only after a failed post)
-.claude/respeak/drafts/
-
 # scripts/bounded holds this lock while make check runs
 .check.lock*

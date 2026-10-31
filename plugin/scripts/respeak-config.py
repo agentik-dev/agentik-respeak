@@ -30,7 +30,7 @@ The contract, with worked examples, is docs/config-layers.md. In one screen:
 
 Nearest to the target wins. Maps deep-merge and scalars replace; lists
 replace, except gate.allow and gate.exclude, which append. Project-only keys
-(gate.enabled, gate.include, gate.exclude, shorthand.*, the style.* corpus
+(gate.enabled, gate.include, gate.exclude, never_compress, the style.* corpus
 pointers, version, schema) are dropped with a warning when a user, ancestor,
 folder, or scope layer sets them. `narrative.profile: NAME` in a layer expands
 that profile's fields underneath the layer's own explicit keys.
@@ -43,8 +43,8 @@ folder when only that one holds it. The file is accepted when provider.version h
 never written here. Absent, unreadable, a wrong major or no id: an empty
 layer and at most one warning; respeak behaves as it does alone.
 
-The project root is found the same way for every consumer (hook, skill,
-statusline, CLI): --project if given; else the nearest ancestor of the target
+The project root is found the same way for every consumer (skill, renderer,
+check, CLI): --project if given; else the nearest ancestor of the target
 holding .claude/respeak/config.yaml (never the user config directory); else
 --launch-dir / $CLAUDE_PROJECT_DIR (where Claude Code was started); else the
 nearest ancestor holding .git or .claude/. All paths are compared after
@@ -79,12 +79,12 @@ DEFAULT_PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))
 # Keys only a project-grade layer may set. Anything under these dotted
 # prefixes is dropped (with a warning) from user, ancestor, folder, and scope
 # layers: turning the gate on and choosing which files it covers is a
-# project decision, and shorthand governance must stay reviewable in one
+# project decision, and what is never compressed must stay reviewable in one
 # git-tracked file. Corpus pointers are resources, not tone.
 PROJECT_ONLY = (
     "version", "schema",
     "gate.enabled", "gate.include", "gate.exclude",
-    "shorthand",
+    "never_compress",
     "style.banned_phrases", "style.replacements", "style.rules",
 )
 PROJECT_KINDS = {"plugin", "project", "project-local", "env", "invocation"}
@@ -108,7 +108,7 @@ class SetupError(Exception):
 APPEND_LISTS = ("gate.allow", "gate.exclude")
 
 # Fields a profile contributes when a layer says `narrative.profile: NAME`.
-PROFILE_KEYS = ("tech_level", "default_mode", "lexicon_access",
+PROFILE_KEYS = ("tech_level", "default_mode",
                 "reading_level_grade", "address")
 
 USERCONFIG_ENV = (
@@ -117,7 +117,7 @@ USERCONFIG_ENV = (
 )
 
 KNOWN_TOP_KEYS = {"version", "schema", "editorial_pass", "data", "narrative",
-                  "profiles", "modes", "style", "gate", "shorthand", "scopes"}
+                  "profiles", "modes", "style", "gate", "never_compress", "scopes"}
 
 FAIL_ON_VALUES = ("none", "warn", "error")
 
@@ -1008,9 +1008,6 @@ def fmt_brief(res, gate=None):
     L.append("effective narrative: mode=%s tech_level=%s profile=%s context=%s tone(f=%s d=%s c=%s)"
              % (s["mode"], s["tech"], s["profile"], s["context"], tone.get("formality"), tone.get("directness"),
                 tone.get("confidence")))
-    lex = get_dotted(res.config, "narrative.lexicon_access")
-    if lex:
-        L[-1] += " lexicon_access=%s" % lex
     if gate is not None:
         L.append("gate: enabled=%s fail_on=%s applies=%s (%s)"
                  % (str(gate["enabled"]).lower(), gate["fail_on"],
@@ -1053,9 +1050,6 @@ def fmt_explain(res, gate=None):
     L.append("effective narrative: mode=%s tech_level=%s profile=%s context=%s tone(f=%s d=%s c=%s)"
              % (s["mode"], s["tech"], s["profile"], s["context"],
                 tone.get("formality"), tone.get("directness"), tone.get("confidence")))
-    lex = get_dotted(res.config, "narrative.lexicon_access")
-    if lex:
-        L[-1] += " lexicon_access=%s" % lex
     if gate is not None:
         L.append("gate: enabled=%s fail_on=%s applies=%s (%s)"
                  % (str(gate["enabled"]).lower(), gate["fail_on"],

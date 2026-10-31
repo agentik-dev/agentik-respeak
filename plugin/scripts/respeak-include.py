@@ -3,7 +3,6 @@
 
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-include.py write [--out PATH]
     "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-include.py check [--out PATH]
-    "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-include.py propose [--root R]
 
 The file holds the repo's default communication rules, at most 1,500 bytes,
 and ships in the repo; CLAUDE.md or AGENTS.md imports it with an `@` line,
@@ -13,8 +12,7 @@ Inputs, and nothing else: the plugin defaults (config/respeak.config.yaml),
 the repo's .claude/respeak/config.yaml when git tracks it as a regular file
 (its work-tree copy, refused when it is a symlink or resolves outside the
 root; `scopes:` is not read, since the file is repo-wide), the template
-config/include.md.tmpl, and whether git tracks
-.claude/respeak/lexicon-active.md. The user, userConfig, ancestor, folder
+config/include.md.tmpl. The user, userConfig, ancestor, folder
 and local layers, the session and the environment never reach the file.
 The repo is the git work tree of the current directory.
 
@@ -24,17 +22,11 @@ the git root (not under .git, never under ~/.claude). The first line stamps
 the template version and a short hash of the inputs, so `check` tells a
 stale file from a hand-edited one.
 
-After a write, each tracked input it rendered from (the config, the
-lexicon digest) that differs from HEAD is named on stderr, one line each;
-the exit stays 0.
-
-`propose` prints, for /respeak:init, the gate.include list of the
-human-lane files present at R (default: the current directory), as one
-YAML flow list on one line; with none present, the seed's ["**/*.md"].
-It reads no config and writes nothing.
+After a write, each tracked input it rendered from (the config) that
+differs from HEAD is named on stderr, one line each; the exit stays 0.
 
 Exit: write 0 written; check 0 current, 1 drift (absent, stale or
-hand-edited); propose 0 printed; each 2 on a usage error: arguments, no git
+hand-edited); each 2 on a usage error: arguments, no git
 work tree, an --out outside the git root, an unreadable input, or a render
 over the cap (write then prints the size and writes nothing), and 2 on an
 OS error reading or writing the file, with one line and no traceback.
@@ -57,22 +49,15 @@ RESOLVER = os.path.join(HERE, "respeak-config.py")
 DEFAULTS = os.path.join(PLUGIN_ROOT, "config", "respeak.config.yaml")
 TEMPLATE = os.path.join(PLUGIN_ROOT, "config", "include.md.tmpl")
 PROJECT_REL = ".claude/respeak/config.yaml"
-LEXICON_REL = ".claude/respeak/lexicon-active.md"
 DEFAULT_OUT = ".claude/respeak/include.md"
 REGULAR = ("100644", "100755")
 CAP = 1500
 WIDTH = 76
 GIT_TIMEOUT = 30
-REQUIRED = ("version", "stamp", "body", "switch", "shorthand lexicon", "shorthand none", "readers")
+REQUIRED = ("version", "stamp", "body", "switch", "readers")
 MODE_KEYS = ("reader", "cue", "contract")
 STAMP_RE = re.compile(r"^<!-- respeak include v(\S+), inputs ([0-9a-f]{8});")
 PLACEHOLDER = re.compile(r"\{\{(\w+)\}\}")
-# propose: the human lane, in this order; a file counts when it is present
-# at the root, a glob when it matches at least one file
-HUMAN_FILES = ("README.md", "CHANGELOG.md", "DECISIONS.md", "DESIGN.md", "NICE_TO_HAVE.md",
-               "OPEN-QUESTIONS.md", "HANDOFF.md")
-HUMAN_GLOBS = ("docs/**/*.md", "design/readme/**/*.md", "plugin/docs/**/*.md")
-FALLBACK = ["**/*.md"]
 
 
 class Usage(Exception):
@@ -357,14 +342,7 @@ def render(root):
         include = [include]
     if not isinstance(include, list) or not all(isinstance(i, str) for i in include):
         raise Usage("gate.include must be a list of path patterns")
-    # the digest counts only when git tracks it: an untracked or ignored one
-    # is a file the repo's consumers never get
-    lexicon = (index_mode(root, LEXICON_REL) is not None
-               and os.path.lexists(os.path.join(root, LEXICON_REL)))
-    if lexicon:
-        sources.append(LEXICON_REL)
-
-    inputs = {"mode": mode, "profile": profile, "include": include, "lexicon": lexicon}
+    inputs = {"mode": mode, "profile": profile, "include": include}
     h = hashlib.sha256(raw)
     h.update(b"\0" + json.dumps(inputs, sort_keys=True).encode("utf-8"))
     short = h.hexdigest()[:8]
@@ -375,7 +353,6 @@ def render(root):
         for name, m in modes.items() if name != mode)
     body = fill(sections["body"], {
         "files": ", and " + join_words(["`%s`" % i for i in include]) if include else "",
-        "shorthand": sections["shorthand lexicon" if lexicon else "shorthand none"].strip(),
         "reader": readers.get(profile) or modes[mode]["reader"],
         "mode": mode,
         "contract": modes[mode]["contract"],
@@ -461,73 +438,16 @@ def os_error(what, e, rel=None):
     return line + (" (%s)" % e.filename if e.filename else "")
 
 
-def spelled(parent, name):
-    """Whether parent holds an entry spelled exactly name: on a
-    case-insensitive disk `Docs` answers to `docs`, but the gate's globs
-    are case-sensitive, so presence is the name os.listdir returns."""
-    try:
-        return name in os.listdir(parent)
-    except OSError:
-        return False
-
-
-def glob_matches(root, pattern, match):
-    """Whether pattern matches at least one regular file under its literal
-    directory prefix, each part spelled as on disk (symlinks are not
-    followed)."""
-    head = pattern.split("*", 1)[0].rsplit("/", 1)[0]
-    top = root
-    for part in head.split("/"):
-        if not spelled(top, part):
-            return False
-        top = os.path.join(top, part)
-    if not os.path.isdir(top) or os.path.islink(top):
-        return False
-    for d, dirs, files in os.walk(top):
-        dirs.sort()
-        for name in sorted(files):
-            full = os.path.join(d, name)
-            if (not os.path.islink(full) and os.path.isfile(full)
-                    and match(pattern, os.path.relpath(full, root).replace(os.sep, "/"))):
-                return True
-    return False
-
-
-def propose(root):
-    """The gate.include list of the human-lane files present at root."""
-    try:
-        names = set(os.listdir(root))  # as spelled on disk: readme.md is not README.md
-    except OSError as e:
-        raise Usage(os_error("read", e))
-    match = load_resolver().match_glob  # the gate's own glob semantics
-    found = [n for n in HUMAN_FILES if n in names and os.path.isfile(os.path.join(root, n))]
-    found += [g for g in HUMAN_GLOBS if glob_matches(root, g, match)]
-    print(json.dumps(found or FALLBACK))  # JSON is YAML: one flow list on one line
-    return 0
-
-
 def main(argv=None):
     p = argparse.ArgumentParser(prog="respeak-include.py",
                                 description="Render or check the repo's static include file.")
-    sub = p.add_subparsers(dest="verb", required=True, metavar="{write,check,propose}")
+    sub = p.add_subparsers(dest="verb", required=True, metavar="{write,check}")
     for verb, text in (("write", "render the file; over the cap, write nothing"),
                        ("check", "exit 0 when the file is current, 1 when it differs")):
         s = sub.add_parser(verb, help=text)
         s.add_argument("--out", metavar="PATH",
                        help="output path inside the git root (default %s)" % DEFAULT_OUT)
-    s = sub.add_parser("propose", help="print the gate.include list of the human-lane files present")
-    s.add_argument("--root", metavar="R", help="the directory to look in (default: the current one)")
     args = p.parse_args(argv)
-    if args.verb == "propose":
-        try:
-            root = os.path.realpath(args.root or os.getcwd())
-            if not os.path.isdir(root):
-                raise Usage("not a directory: %s" % root)
-            git_root(root)
-            return propose(root)
-        except Usage as e:
-            warn(str(e))
-            return 2
     try:
         root = git_root(os.getcwd())
         path, rel = out_path(root, args.out)
