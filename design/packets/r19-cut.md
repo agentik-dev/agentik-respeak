@@ -30,6 +30,8 @@
 
 10. `plugin/docs/config-layers.md` names the removed keys once, in its upgrade note; the acceptance grep excludes that file.
 
+Amendment 1 (2026-10-31, the coordinator's rulings), after the refuter's round 1, each with a test that goes red first: (F3) `respeak-config.py` drops the unreachable `fmt_statusline` branch and the statusline comment. (F4) `validate` on a config holding the removed `hooks`, `shorthand`, `block_on` and `lexicon_access` warns and exits 0; the dropped case returns as one test in `tests/test_config_layers.py`. (F5) the `.mdx`, upper-case and non-Markdown cases of the old `tests/test_gate_hook.sh` move into `tests/test_check.sh`. (R4) a rendered file holds the narrative alone, whichever path renders it: the marker, the `gate:` and `config:` lines and the still-failing report go in the answer; `respeak-render.sh` strips the closing lines as it strips the marker, and the skill and the agent state it; a fake runner pins the script and a static test the two texts. A real `claude -p` render stays unproved. (R5) the skill's serial render fits relay's `--max-turns 8` (agentik-relay `Makefile:58-59`, not edited) in seven turns: a contract naming a file never tries the agent, and the reads go in one message. The plugin bumps to `0.12.1` in the last commit that touches `plugin/`, since `plugin-version-check` reads a file changed after the bump as a failure; the README moves by hand, source and render byte-identical.
+
 ## 3. Interfaces
 
 - Gone: every hook; `/respeak:audit`, `init`, `on`, `off`, `report`; config keys `shorthand.*`, `hooks.*`, `gate.block_on`, `narrative.auto_narrative`, `narrative.lexicon_access`; userConfig `auto_narrative`; env `RESPEAK_HOOKS`, `RESPEAK_GATE`.
