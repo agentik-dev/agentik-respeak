@@ -1,5 +1,5 @@
 version: 3
-narrative: { profile: peer-engineer, auto_narrative: false }   # technical, tech_level 3: public GitHub and plugin users
+narrative: { profile: peer-engineer }   # technical, tech_level 3: public GitHub and plugin users
 gate:
   enabled: true    # make doclint runs respeak-check.sh, which skips every file while this is false
   include: [README.md, CHANGELOG.md, DECISIONS.md, DESIGN.md, NICE_TO_HAVE.md, OPEN-QUESTIONS.md,
