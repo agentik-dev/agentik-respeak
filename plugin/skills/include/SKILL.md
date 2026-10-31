@@ -35,8 +35,8 @@ Run exactly this command and relay its output to the user as written. When
   nothing; tell the user which input made it long (usually a long
   `gate.include` list) and do not edit their config to fit.
 - `check [--out PATH]` renders in memory and compares. Exit 0: current.
-  Exit 1: the file is absent, stale (an input changed: the config, the
-  lexicon digest, or the plugin after an update) or hand-edited; offer
+  Exit 1: the file is absent, stale (an input changed: the config, or
+  the plugin after an update) or hand-edited; offer
   `write`. Exit 2: a usage error.
 
 Never edit the include file by hand, and never write it under `~/.claude`.
@@ -44,8 +44,7 @@ Never edit the include file by hand, and never write it under `~/.claude`.
 After a `write`, list the steps left to the author, and take none of them
 unless asked:
 
-1. Commit the file at its path, and `.claude/respeak/lexicon-active.md` when
-   the repo has a lexicon.
+1. Commit the file at its path.
 2. Import it with one line, `@.claude/respeak/include.md` (or the `--out`
    path): in `CLAUDE.md` for Claude Code, in `AGENTS.md` for other tools, or
    in both. As of Claude Code 2.1.296 (the memory docs, re-read
@@ -56,5 +55,5 @@ unless asked:
    the shared `scripts/hygiene` adds `.claude/respeak/include.md: sibling`
    to its `.hygiene-allow`, since the file names respeak.
 
-The author runs `check` after a config, lexicon or plugin update, then
+The author runs `check` after a config or plugin update, then
 `write`, and commits. The consuming repo's make never calls respeak.

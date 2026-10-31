@@ -6,7 +6,7 @@
 | pin | `main` at `4cd4ec3` plus this packet's commit; branch `r-cut`, worktree `.claude/worktrees/r-cut`, off main; a hand-run builder; sibling repos read-only |
 | wall | this worktree only. No push, merge, tag, `--amend`, rebase, install or network; no `claude` beyond `claude plugin validate`; never build or run a relay binary, never run `relay` or `agentik relay` `run`, `plan`, `gate`, `stop`, `kill`, `clean` or `resume`; a caller in another repo that needs a change is a line in the hand-back |
 | may touch | `plugin/**`, `tests/**`, `scripts/readme-render.sh`, `scripts/readme-fresh.sh`, `Makefile`, `CLAUDE.md`, `CHANGELOG.md`, `NICE_TO_HAVE.md`, `README.md`, `design/readme/source.md`, `design/readme/rendered.sha256`, `design/readme/contract.txt`, `docs/architecture.md`, `docs/references.md`, `examples/layered/**`, `.claude/respeak/**`, `.hygiene-allow`, `.gitignore`, `design/packets/r19-cut.md`, `history/sittings/*.md`, `history/sessions/NEXT`. Nothing else |
-| acceptance | `test ! -e plugin/scripts/respeak-lexicon.py -a ! -e plugin/scripts/respeak-gate.sh -a ! -e plugin/hooks/hooks.json -a ! -e plugin/corpus/lexicon.yaml` exits 0 (main: 1); `ls plugin/skills \| tr '\n' ' '` reads `include respeak ` (main: seven); `grep -rIlE 'respeak-lexicon\|respeak-gate\|lexicon-status\|lexicon-active\|render-lexicon\|session_start\|auto_narrative\|block_on' plugin CLAUDE.md design/readme/source.md README.md .claude \| wc -l` reads `0`; `grep -c -F 'arguments: [mode, source]' plugin/skills/respeak/SKILL.md` reads `1`; `grep -c -F 'never_compress:' plugin/config/respeak.config.yaml` reads `1`; `test "$(wc -l < plugin/skills/respeak/SKILL.md)" -le 60` exits 0 (main: 84); `cmp design/readme/source.md README.md` exits 0 |
+| acceptance | `test ! -e plugin/scripts/respeak-lexicon.py -a ! -e plugin/scripts/respeak-gate.sh -a ! -e plugin/hooks/hooks.json -a ! -e plugin/corpus/lexicon.yaml` exits 0 (main: 1); `ls plugin/skills \| tr '\n' ' '` reads `include respeak ` (main: seven); `grep -rIlE 'respeak-lexicon\|respeak-gate\|lexicon-status\|lexicon-active\|render-lexicon\|session_start\|auto_narrative\|block_on' --exclude=config-layers.md plugin CLAUDE.md design/readme/source.md README.md .claude \| wc -l` reads `0`; `grep -c -F 'arguments: [mode, source]' plugin/skills/respeak/SKILL.md` reads `1`; `grep -c -F 'never_compress:' plugin/config/respeak.config.yaml` reads `1`; `test "$(wc -l < plugin/skills/respeak/SKILL.md)" -le 60` exits 0 (main: 84); `cmp design/readme/source.md README.md` exits 0 |
 | budget | 90 tool calls, 180k context, `claude-opus-5-5`; five commits, this packet's first; the charter opens with doclint's five rows |
 | verify | `make check` |
 
@@ -27,6 +27,8 @@
 7. The include template loses the shorthand line and bumps its version; a rendered include file in another repo reads stale until its author rewrites it (a line for the hand-back).
 8. The README is edited by hand: the source and the render byte-identical, the sidecar re-stamped with `scripts/readme-fresh.sh --stamp`; no `claude` runs. Past design records, packets and sittings keep their words. No archive folder: the deleted code stays in git history.
 9. Plugin `0.12.0`: `0.x` may break on a minor (GUIDE §7). The bump lands in the last commit that touches `plugin/`.
+
+10. `plugin/docs/config-layers.md` names the removed keys once, in its upgrade note; the acceptance grep excludes that file.
 
 ## 3. Interfaces
 
