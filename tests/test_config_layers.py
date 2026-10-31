@@ -574,6 +574,25 @@ class CLI(unittest.TestCase):
         r = self.run_cli("validate", os.path.join(PLUGIN, "config", "respeak.config.yaml"))
         self.assertEqual(r.returncode, 0, r.stdout)
 
+    def test_a_config_with_the_removed_keys_warns_and_exits_0(self):
+        # an upgrader's old file: r19 removed these keys, and no old file is refused for them
+        old = ("hooks: {session_start: true}\n"
+               "shorthand: {old_knob: [incident]}\n"
+               "gate: {enabled: true, block_on: error}\n"
+               "narrative: {lexicon_access: read}\n")
+        proj = os.path.join(self.fx.project, ".claude", "respeak", "config.yaml")
+        write(proj, old)
+        r = self.run_cli("validate", proj)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("[project]: ok (with warnings)", r.stdout)
+        self.assertIn("unknown top-level key 'hooks'", r.stdout)
+        self.assertIn("unknown top-level key 'shorthand'", r.stdout)
+        self.assertNotIn("error:", r.stdout)
+        doc = self.fx.doc("docs/a.md")
+        r = self.run_cli("resolve", "--project", self.fx.project, "--for", doc,
+                         "--walk-from", self.fx.root, "--format", "json")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_the_resolver_calls_only_what_it_defines(self):
         # the statusline format left with statusline.sh, and its branch with it
         with open(RESOLVER, encoding="utf-8") as f:
