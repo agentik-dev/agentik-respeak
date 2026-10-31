@@ -2,6 +2,14 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
+## 0.12.3 (2026-10-31)
+
+The installed 0.11.0 passed the same command, rc 0, `num_turns` 19, with five Bash denials absorbed: the Agent tool is not refused under `--allowedTools 'Read Write'`, and a subagent's turns do not count against `--max-turns 8`. The rule of 0.12.1 and 0.12.2, that a contract naming a file works inline, was the regression, and both turn counts rested on it.
+
+- `/respeak:respeak` hands every render to the `respeak:respeak` agent again, a contract's too, with the source minus the `;`, the contract text and the path it names. The agent writes the file, the narrative alone.
+- A denied tool is never retried: a denied resolve or measure is skipped, and the render goes on unmeasured.
+- Inline is only for a real refusal of the Agent tool: the reads in one message, one Write, one short line, no measure and no verifier.
+
 ## 0.12.2 (2026-10-31)
 
 A real render under `--allowedTools 'Read Write' --max-turns 8` ended `error_max_turns` at 9 turns: five calls denied. The seven turns 0.12.1 states assumed Bash, and they were wrong.

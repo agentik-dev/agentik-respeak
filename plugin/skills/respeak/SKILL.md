@@ -23,19 +23,8 @@ traces, security findings, user quotes, numbers with units, safety and caution
 instructions, an ask with its owner and deadline, identifiers, novel decisions
 and negations.
 
-**A contract naming a file, or a denied Bash or Agent call: Read and Write only.**
-Assume no Bash, no Edit and no agent, and skip the steps below, in three turns:
-(1) in one message, Read the source, the file the contract names if it exists, and
-from `${CLAUDE_PLUGIN_ROOT}/` `agents/respeak.md`, `config/respeak.config.yaml`,
-`corpus/banned-phrases.yaml`, `corpus/replacements.yaml` and
-`corpus/style/tone-mapping.md`, with the project's `.claude/respeak/` copies; read
-nothing after it. (2) Make the pass by the agent file and Write the file once, the
-narrative alone: no marker line, no `gate:` or `config:` line. (3) Answer with the
-path in one short line, or with no file named, the narrative. No retry of a denied
-tool, no second rewrite. This path runs no measure and no verifier: what it writes
-is unmeasured.
+A denied tool is never retried: a denied step 3 or 5 is skipped, the render unmeasured.
 
-Where Bash works, the fuller path:
 1. **The mode.** `$mode` if it is `eli5`, `bluf` or `technical`; otherwise by the
    audience named (a child, "plain English": eli5; a manager, "bottom line": bluf;
    an engineer, "for the docs": technical); otherwise `narrative.default_mode` above.
@@ -45,17 +34,27 @@ Where Bash works, the fuller path:
    folder's `.respeak.yaml` governs the files in it), else the working directory:
    `"${CLAUDE_PLUGIN_ROOT}/scripts/respeak-config.sh" resolve --for "<target>" --launch-dir "${CLAUDE_PROJECT_DIR}" [--mode <mode>] [--profile <name>] --format yaml --out "/tmp/respeak-${CLAUDE_CODE_SESSION_ID}.yaml"`
    Add `--profile` when the user named an audience matching a `profiles:` entry.
-4. **The render.** Delegate to the `respeak:respeak` agent with the mode, that
-   file's contents under the heading `Resolved respeak configuration`, the source,
-   any contract, and the working directory; where it is refused, follow `agents/respeak.md`.
-5. **The check.** Trust no narrative unmeasured. Feed it to the scanner on stdin:
+4. **The render.** Hand every render to the `respeak:respeak` agent, a contract's too,
+   since a caller's `--max-turns` does not count its turns: the mode, that file's
+   contents under the heading `Resolved respeak configuration` if step 3 made it, the
+   source, the contract text verbatim, the path it names, and the working directory.
+   The agent writes that file. Only where the Agent tool is refused, render here with
+   Read and Write: (1) in one message, Read the source, the file the contract names if
+   it exists, and from `${CLAUDE_PLUGIN_ROOT}/` `agents/respeak.md`,
+   `config/respeak.config.yaml`, `corpus/banned-phrases.yaml`, `corpus/replacements.yaml`
+   and `corpus/style/tone-mapping.md`, with the project's `.claude/respeak/` copies;
+   read nothing after it. (2) Make the pass and Write the file once. (3) Answer in one
+   short line. No Edit, no second rewrite, no measure and no verifier there.
+5. **The check.** Trust no narrative unmeasured. Feed it to the scanner on stdin, or
+   name the file the agent wrote in place of `-`:
    ```
    "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-measure.py - --fail-on error --config "/tmp/respeak-${CLAUDE_CODE_SESSION_ID}.yaml" <<'RESPEAK_EOF'
    <the narrative, verbatim>
    RESPEAK_EOF
    ```
-   Exit 1: rewrite to clear every error-severity hit and check again, at most 2
-   rounds. Still failing: go on, the final report under `respeak gate: still failing after 2 rounds`.
+   Exit 1: send the report to the agent for a rewrite that clears every error-severity
+   hit and check again, at most 2 rounds. Still failing: go on, the final report under `respeak gate: still failing after 2 rounds`.
 6. **The answer.** Relay the narrative verbatim, its `📣 respeak · <mode>` marker
-   line first, with no commentary. A file holds the narrative alone: no marker
-   line, no `gate:` or `config:` line, no report from step 5.
+   line first, with no commentary. A file holds the narrative alone: no marker line,
+   no `gate:` or `config:` line, no report from step 5, none of this answer. Then answer
+   with the path in one short line, any such report after it.
