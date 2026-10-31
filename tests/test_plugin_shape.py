@@ -74,6 +74,22 @@ class Narrator(unittest.TestCase):
             self.assertIn("- **%s**:" % mode, text)
             self.assertIn(mode, read(SKILL))
 
+    def test_a_rendered_file_holds_the_narrative_alone(self):
+        # The agent's reply carries a marker and closing lines for its caller. A file holds
+        # none of them, whether the script, the agent or the skill's own turn writes it. A
+        # fake runner pins the script in tests/test_render.sh; these two are prose a model reads.
+        answer = read(SKILL).split("**The answer.**", 1)[1]
+        for word in ("marker line", "`gate:`", "`config:`", "report"):
+            self.assertIn(word, answer)
+        self.assertIn("write the narrative alone there", " ".join(answer.split()))
+        contract = " ".join(read(AGENT).split("## Output contract", 1)[1].split())
+        self.assertIn("A file the caller asks for holds the narrative alone", contract)
+        for word in ("marker line", "`gate:`", "`config:`"):
+            self.assertIn(word, contract)
+        script = read(os.path.join(PLUGIN, "scripts", "respeak-render.sh"))
+        self.assertIn("config: approximated from files (no resolved block)", " ".join(read(AGENT).split()))
+        self.assertIn(r"config: approximated from files \(no resolved block\)", script)
+
     def test_nothing_ships_the_lane_that_left(self):
         words = re.compile(r"lexicon|shorthand|digest|machine lane|swarm", re.I)
         for path in (SKILL, AGENT, os.path.join(PLUGIN, "config", "include.md.tmpl"),

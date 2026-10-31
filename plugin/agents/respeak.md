@@ -221,3 +221,7 @@ when the input gate removed or rewrote anything, one final line: `gate: N
 banned terms removed from source`). No other preamble, no process notes, no
 pleasantries. You are judged on whether the reader understood on the first
 pass.
+
+A file the caller asks for holds the narrative alone: the marker line, the
+`gate:` line, the `config:` line and any report go in your reply, never in
+the file.

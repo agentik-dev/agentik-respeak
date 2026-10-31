@@ -29,7 +29,9 @@
 #      output, strips any preamble before the first real content line (a
 #      leading `---` front-matter fence or a `#` heading) — belt-and-suspenders
 #      against a chatty preamble the agent's own output contract forbids but
-#      a model might still emit — and writes it to --out. The output ends
+#      a model might still emit — then the marker line above and the
+#      agent's closing `gate:` and `config:` lines below the narrative, and
+#      writes it to --out. The output ends
 #      in exactly one newline when the source ends in one, and in none when
 #      the source does not (ruling 10).
 #      Everything above that first line is dropped, which is why a README
@@ -270,8 +272,12 @@ m = re.search(r"^(?:---|#)", result, re.M)
 if m:
     result = result[m.start():]
 # The agent opens with an activation marker for interactive readers; a
-# rendered file does not want it.
+# rendered file does not want it, nor the closing lines it writes for its caller.
 result = re.sub(r"\A\s*\U0001F4E3[^\n]*\n+", "", result)
+closing = re.compile(r"\n+(?:gate: \d+ banned terms? removed from source"
+                     r"|config: approximated from files \(no resolved block\))\s*\Z")
+while closing.search(result):
+    result = closing.sub("", result)
 with open(source, "rb") as f:
     source_newline = f.read().endswith(b"\n")
 result = result.rstrip("\n") + ("\n" if source_newline else "")

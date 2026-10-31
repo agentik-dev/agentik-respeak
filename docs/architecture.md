@@ -14,7 +14,7 @@ The machine lane left in 0.12.0 (packet `design/packets/r19-cut.md`, the owner's
 | `bluf` | the first sentence is the result, decision or ask; forwardable unedited |
 | `technical` | the conclusion first, evidence as file:line, open questions last |
 
-Every rendered narrative opens with a marker line, `📣 respeak · <mode>`, so the reader knows which voice is speaking. The headless renderer strips it from files.
+Every rendered narrative opens with a marker line, `📣 respeak · <mode>`, so the reader knows which voice is speaking. A rendered file holds the narrative alone: the headless renderer strips the marker and the agent's closing `gate:` and `config:` lines, and the skill and the agent state the same for a file they write.
 
 ## What is never compressed
 

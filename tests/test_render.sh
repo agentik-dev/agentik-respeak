@@ -75,6 +75,7 @@ case "${FAKE_MODE:-echo}" in
   iserr) printf '%s\n' '{"type": "result", "subtype": "success", "is_error": true, "result": "# Fixture\n\nSomething broke.\n"}' ;;
   maxturns) printf '%s\n' '{"type": "result", "subtype": "error_max_turns", "is_error": false, "result": "# Fixture\n\nPartial.\n"}' ;;
   result) python3 -c 'import json, os; print(json.dumps({"type": "result", "subtype": "success", "is_error": True, "result": os.environ["FAKE_RESULT"]}))' ;;
+  said) python3 -c 'import json, os; print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": os.environ["FAKE_RESULT"]}))' ;;
   text) printf '%s\n' "$FAKE_TEXT"; exit 1 ;;
   login) echo "Invalid API key · Please run /login" >&2; exit 1 ;;
   crash) echo "segfault in the runner" >&2; exit 1 ;;
@@ -161,6 +162,28 @@ if [ "$(survivors "$m46")" = no ]; then ok "render: a TERM to the renderer leave
 else bad "render: a TERM to the renderer leaves no orphan runner"; fi
 check_out "render: the runner gets --tools and --max-turns" '--tools Read Grep Glob --allowedTools Read Grep Glob --max-turns 8' "$(cat "$FAKE_LOG")"
 check_out "render: the runner sees RESPEAK_RENDER_DEPTH" 'depth: 1' "$(cat "$FAKE_LOG")"
+
+# --- a rendered file holds the narrative alone (r19 amendment 1) --------------
+said='📣 respeak · technical
+# Fixture
+
+The cache is warm.
+
+gate: 2 banned terms removed from source
+config: approximated from files (no resolved block)
+'
+rm -f "$out"; FAKE_MODE=said FAKE_RESULT="$said" bash "$RENDER" --mode technical --source "$src" --out "$out" >/dev/null 2>&1; rc=$?
+check "render: a reply with the agent's closing lines still renders" 0 "$rc"
+if [ "$(cat "$out")" = "$(printf '# Fixture\n\nThe cache is warm.')" ]; then ok "render: the file holds the narrative alone"
+else bad "render: the file holds the narrative alone (got: $(cat "$out"))"; fi
+said='# Fixture
+
+gate: 1 banned term removed from source
+
+The cache is warm.
+'
+rm -f "$out"; FAKE_MODE=said FAKE_RESULT="$said" bash "$RENDER" --mode technical --source "$src" --out "$out" >/dev/null 2>&1
+check_out "render: such a line inside the narrative stays" 'gate: 1 banned term removed from source' "$(cat "$out")"
 
 # --- ADV10-3: an account failure is exit 4, and nothing reaches --out -------
 rm -f "$out"

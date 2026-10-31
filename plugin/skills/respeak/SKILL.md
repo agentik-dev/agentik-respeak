@@ -52,4 +52,5 @@ and negations.
    reader sees what did not clear.
 6. **The answer.** Relay the narrative verbatim, its `📣 respeak · <mode>` marker
    line first, with no commentary. When a contract names a file, write the
-   narrative there without the marker line, and answer with the path.
+   narrative alone there: no marker line, no `gate:` or `config:` line, no report
+   from step 5. Answer with the path and any of those lines.
