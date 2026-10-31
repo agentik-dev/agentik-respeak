@@ -228,4 +228,41 @@ check "--prose-keys on the command line verifies it for this run (exit 0)" 0 "$r
 out="$(cd "$proj" && bash "$CHECK" --prose-keys 2>&1)"; rc=$?
 check "usage: --prose-keys without a list exits 2" 2 "$rc"
 
+# The Markdown contract, moved here from the gate hook's suite at r19: gate.include
+# may widen to .markdown and .mdx, never past Markdown, and the extension's case
+# does not count.
+BANNED_DOC='# Bad\n\nThis design is load-bearing for the release.\n'
+md_repo() {
+  git -C "$1" init -q && git -C "$1" add -A && gitc -C "$1" commit -q -m init
+}
+md="$work/md"; mkdir -p "$md/.claude/respeak"
+printf 'version: 3\ngate: {enabled: true, include: ["**/*.md", "**/*.mdx", "**/*.txt"], fail_on: error}\n' > "$md/.claude/respeak/config.yaml"
+printf "$BANNED_DOC" > "$md/page.mdx"; printf "$BANNED_DOC" > "$md/notes.txt"
+md_repo "$md"
+out="$(cd "$md" && bash "$CHECK" page.mdx)"; rc=$?
+check ".mdx listed in gate.include is gated (exit 1)" 1 "$rc"
+check_out "...and blocked by name" 'BLOCKED  page.mdx' "$out"
+out="$(cd "$md" && bash "$CHECK" notes.txt)"; rc=$?
+check ".txt in gate.include is still not gated: Markdown only (exit 0)" 0 "$rc"
+check_out "...and blocks nothing" '0 blocked' "$out"
+
+narrow="$work/md-narrow"; mkdir -p "$narrow/.claude/respeak"
+printf 'version: 3\ngate: {enabled: true, include: ["**/*.md"], fail_on: error}\n' > "$narrow/.claude/respeak/config.yaml"
+printf "$BANNED_DOC" > "$narrow/page.mdx"
+md_repo "$narrow"
+out="$(cd "$narrow" && bash "$CHECK" page.mdx)"; rc=$?
+check ".mdx not listed in gate.include is skipped (exit 0)" 0 "$rc"
+check_out "...as skipped, not passed" 'skipped  page.mdx' "$out"
+
+upper="$work/md-upper"; mkdir -p "$upper/.claude/respeak"
+printf 'version: 3\ngate: {enabled: true, include: ["**/*"], fail_on: error}\n' > "$upper/.claude/respeak/config.yaml"
+for name in README.MDX Page.Markdown NOTES.MD notes.TXT; do printf "$BANNED_DOC" > "$upper/$name"; done
+md_repo "$upper"
+for name in README.MDX Page.Markdown NOTES.MD; do
+  out="$(cd "$upper" && bash "$CHECK" "$name")"; rc=$?
+  check "$name is gated like its lowercase twin (exit 1)" 1 "$rc"
+done
+out="$(cd "$upper" && bash "$CHECK" notes.TXT)"; rc=$?
+check "notes.TXT is still not Markdown (exit 0)" 0 "$rc"
+
 echo; echo "$pass passed, $fail failed"; [ "$fail" -eq 0 ]
