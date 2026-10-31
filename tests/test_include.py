@@ -21,13 +21,11 @@ PY_WRAPPER = os.path.join(PLUGIN, "scripts", "py")
 OLD_WRAPPER = os.path.join(PLUGIN, "scripts", "respeak-py.sh")
 TEMPLATE = os.path.join(PLUGIN, "config", "include.md.tmpl")
 SKILL = os.path.join(PLUGIN, "skills", "respeak", "SKILL.md")
-INIT_SKILL = os.path.join(PLUGIN, "skills", "init", "SKILL.md")
 AGENT = os.path.join(PLUGIN, "agents", "respeak.md")
 FIXTURE = os.path.join(REPO, "examples", "layered", "project")
 HYGIENE = os.path.join(REPO, "scripts", "hygiene")
 OUT_REL = os.path.join(".claude", "respeak", "include.md")
 CFG_REL = os.path.join(".claude", "respeak", "config.yaml")
-LEX_REL = os.path.join(".claude", "respeak", "lexicon-active.md")
 CAP = 1500
 STAMP_RE = re.compile(r"^<!-- respeak include v[0-9]+, inputs [0-9a-f]{8}; "
                       r"regenerate with /respeak:include, do not edit -->$")
@@ -41,13 +39,6 @@ def flat(data):
 def template_modes():
     with open(TEMPLATE) as f:
         return [m.group(1) for m in re.finditer(r"^@@ mode (\S+)\s*$", f.read(), re.M)]
-
-
-def init_step(n):
-    """The text of /respeak:init's numbered step n."""
-    with open(INIT_SKILL) as f:
-        m = re.search(r"^%d\. (.*?)(?=^\d+\. |\Z)" % n, f.read(), re.M | re.S)
-    return m.group(1) if m else ""
 
 
 def skill_modes():
@@ -361,22 +352,6 @@ class OnlyTrackedLayers(Base):
             self.assertIn("outside the git root", p.stderr)
         self.assertFalse(os.path.exists(self.r.path("include.md")))
 
-    def test_lexicon_counts_only_when_tracked(self):
-        self.assertExit(self.r.run("write"), 0)
-        self.assertNotIn("lexicon-active.md", flat(self.r.read()))
-        lex = ".claude/respeak/lexicon-active.md"
-        with open(self.r.path(lex), "w") as f:
-            f.write("# digest\n")
-        # untracked, then gitignored: consumers never get it, so it counts for nothing
-        self.assertExit(self.r.run("check"), 0)
-        with open(self.r.path(".gitignore"), "a") as f:
-            f.write("/%s\n" % lex)
-        self.assertExit(self.r.run("check"), 0)
-        self.r.git("add", "-f", lex)
-        self.assertExit(self.r.run("check"), 1)
-        self.assertExit(self.r.run("write"), 0)
-        self.assertIn("`.claude/respeak/lexicon-active.md`", flat(self.r.read()))
-
 
 class Hygiene(Base):
     def test_rendered_fixture_has_no_hit_outside_the_allowlist(self):
@@ -422,82 +397,6 @@ class DoneClaimRule(Base):
         self.assertTrue(rule in text, "the include lacks the rule:\n" + text)
 
 
-class Propose(unittest.TestCase):
-    """`propose [--root R]` prints the gate.include list built from the
-    human-lane files present at R, one YAML flow list on one line."""
-
-    def setUp(self):
-        self.root = os.path.realpath(tempfile.mkdtemp(prefix="respeak-propose-"))
-        self.addCleanup(shutil.rmtree, self.root, True)
-        self.repo = os.path.join(self.root, "repo")
-        os.makedirs(self.repo)
-        subprocess.run(["git", "init", "-q"], cwd=self.repo, check=True,
-                       stdout=subprocess.DEVNULL)
-
-    def touch(self, rel):
-        path = os.path.join(self.repo, rel)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            f.write("# t\n")
-
-    def propose(self, *args, cwd=None):
-        return subprocess.run([sys.executable, SCRIPT, "propose"] + list(args),
-                              cwd=cwd or self.repo, text=True, capture_output=True,
-                              stdin=subprocess.DEVNULL, timeout=60)
-
-    def assertList(self, p, want):
-        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
-        self.assertEqual(len(p.stdout.splitlines()), 1, p.stdout)
-        import yaml
-        self.assertEqual(yaml.safe_load(p.stdout), want)
-
-    def test_propose_lists_present_human_lane(self):
-        for rel in ("DECISIONS.md", "docs/a.md", "README.md", "notes.md", "design/x.md",
-                    "design/readme/source.txt"):
-            self.touch(rel)
-        os.makedirs(os.path.join(self.repo, "plugin", "docs"))  # empty: its glob matches nothing
-        self.assertList(self.propose(), ["README.md", "DECISIONS.md", "docs/**/*.md"])
-
-    def test_propose_lists_every_entry_in_order(self):
-        rels = ["HANDOFF.md", "plugin/docs/p/q.md", "OPEN-QUESTIONS.md", "design/readme/source.md",
-                "NICE_TO_HAVE.md", "DESIGN.md", "docs/a.md", "DECISIONS.md", "CHANGELOG.md",
-                "README.md"]
-        for rel in rels:
-            self.touch(rel)
-        self.assertList(self.propose(), [
-            "README.md", "CHANGELOG.md", "DECISIONS.md", "DESIGN.md", "NICE_TO_HAVE.md",
-            "OPEN-QUESTIONS.md", "HANDOFF.md", "docs/**/*.md", "design/readme/**/*.md",
-            "plugin/docs/**/*.md"])
-
-    def test_propose_counts_names_as_spelled_on_disk(self):
-        # B2: on a case-insensitive disk `Docs/` answers to `docs/`, but the gate's
-        # globs are case-sensitive; presence is the name os.listdir returns
-        for rel in ("Docs/a.md", "readme.md", "Design/readme/x.md", "design/Readme/y.md",
-                    "plugin/Docs/z.md"):
-            self.touch(rel)
-        self.assertList(self.propose(), ["**/*.md"])
-        self.touch("docs/b.md")  # a second, lower-case docs/ only where the disk allows it
-        names = os.listdir(self.repo)
-        want = ["docs/**/*.md"] if "docs" in names else ["**/*.md"]
-        self.assertList(self.propose(), want)
-
-    def test_propose_empty_falls_back(self):
-        self.touch("src/readme.txt")
-        p = self.propose()
-        self.assertList(p, ["**/*.md"])
-        self.assertEqual(p.stdout.strip(), '["**/*.md"]')
-
-    def test_propose_root_flag_and_outside_git(self):
-        self.touch("README.md")
-        self.assertList(self.propose("--root", self.repo, cwd=self.root), ["README.md"])
-        plain = os.path.join(self.root, "plain")
-        os.makedirs(plain)
-        p = self.propose("--root", plain)
-        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
-        self.assertIn("not inside a git work tree", p.stderr)
-        self.assertEqual(p.stdout, "")
-
-
 class UncommittedSources(Base):
     """`write` names each tracked source it rendered from that differs from
     HEAD on stderr, and still exits 0."""
@@ -513,23 +412,14 @@ class UncommittedSources(Base):
         p = self.r.run("write")
         self.assertExit(p, 0)
         self.assertIn(self.note(".claude/respeak/config.yaml"), p.stderr.splitlines())
-        self.assertNotIn("lexicon-active.md", p.stderr)
 
-    def test_write_warns_staged_only_config_and_uncommitted_lexicon(self):
+    def test_write_warns_staged_only_config(self):
         # the setUp stages the config and never commits: it differs from HEAD
-        with open(self.r.path(LEX_REL), "w") as f:
-            f.write("# digest\n")
-        self.r.git("add", "-f", LEX_REL)
         p = self.r.run("write")
         self.assertExit(p, 0)
-        lines = p.stderr.splitlines()
-        self.assertIn(self.note(".claude/respeak/config.yaml"), lines)
-        self.assertIn(self.note(".claude/respeak/lexicon-active.md"), lines)
+        self.assertIn(self.note(".claude/respeak/config.yaml"), p.stderr.splitlines())
 
     def test_write_quiet_when_committed(self):
-        with open(self.r.path(LEX_REL), "w") as f:
-            f.write("# digest\n")
-        self.r.git("add", "-f", LEX_REL)
         self.r.commit()
         p = self.r.run("write")
         self.assertExit(p, 0)
@@ -544,39 +434,6 @@ class UncommittedSources(Base):
         with open(self.r.path(CFG_REL), "a") as f:
             f.write("# an edit not yet committed\n")
         self.assertNotIn("uncommitted", self.r.run("check").stderr)
-
-
-class InitSkill(Base):
-    """/respeak:init's step 6, run the way the skill says, in the fixture."""
-
-    def test_init_stages_the_digest_with_the_config(self):
-        # B1: step 3 always writes the digest; the include must render from what
-        # the author commits, so init's staging command adds it with the config
-        step = init_step(6)
-        adds = re.findall(r"`(git add [^`]+)`", step)
-        self.assertEqual(len(adds), 1, step)
-        with open(self.r.path(LEX_REL), "w") as f:
-            f.write("# digest\n")
-        self.r.git(*adds[0].split()[1:])
-        self.assertExit(self.r.run("write"), 0)
-        self.r.git("add", CFG_REL, LEX_REL, OUT_REL)  # the author commits what init made
-        self.r.commit()
-        self.assertExit(self.r.run("check"), 0)
-        self.assertIn("`.claude/respeak/lexicon-active.md`", flat(self.r.read()))
-
-    def test_init_writes_the_include_only_at_the_git_toplevel(self):
-        # B3: write reads and writes at the git root, so in a project below it
-        # the include would land beside the root's config and the offered
-        # @.claude/respeak/include.md would point at nothing
-        nested = self.r.path("pkg")
-        os.makedirs(os.path.join(nested, ".claude", "respeak"))
-        self.assertExit(self.r.run("write", cwd=nested), 0)
-        self.assertTrue(os.path.isfile(self.r.path(OUT_REL)))
-        self.assertFalse(os.path.exists(os.path.join(nested, OUT_REL)))
-        step = flat(init_step(6).encode("utf-8"))
-        self.assertIn("`git rev-parse --show-toplevel`", step)
-        self.assertRegex(step, r"[Ss]kip both")
-        self.assertIn("@.claude/respeak/include.md", step)
 
 
 class Wrapper(unittest.TestCase):

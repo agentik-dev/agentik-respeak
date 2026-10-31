@@ -61,8 +61,5 @@ how honestly they are labeled.
 | 1 | nothing | none; analogy allowed (one) | outcomes only ("saves ~$300k/yr") |
 | 2 | manager fluency | domain nouns, no internals | numbers + one-line mechanism |
 | 3 | working engineer | standard CS terms free; project terms defined on first use | mechanisms + key identifiers |
-| 4 | engineer near this system | project terms free; lexicon terms expanded on first use | file:line, commands, configs |
-| 5 | the author | lexicon shorthand allowed inline | raw refs, diffs, traces |
-
-tech_level 5 is the only level where the machine lane and human lane are
-allowed to converge — an expert reader opts into the shorthand.
+| 4 | engineer near this system | project terms free | file:line, commands, configs |
+| 5 | the author | anything the author wrote | raw refs, diffs, traces |

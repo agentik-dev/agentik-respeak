@@ -20,7 +20,7 @@ design/readme/*: sibling                          # the README's source, the sam
 plugin/agents/*: sibling                          # the agent prompts name the plugin
 assets/*: sibling                                 # the icon's file name
 plugin/config/*: sibling                          # the plugin's defaults name it
-plugin/corpus/*: sibling                          # the lexicon names the plugin
+plugin/corpus/*: sibling                          # the corpus names the plugin
 plugin/corpus/style/*: sibling                    # the style corpus names the plugin
 docs/*: sibling                                   # the user docs name the plugin
 plugin/docs/*: sibling                            # the plugin's docs name it
@@ -30,7 +30,6 @@ examples/layered/project/.claude/respeak/*: sibling  # the fixture's project lay
 examples/layered/project/docs/api/*: sibling      # the folder file is `.respeak.yaml`
 examples/layered/project/docs/exec/*: sibling     # the folder file is `.respeak.yaml`
 examples/layered/project/notes/*: sibling         # the folder file is `.respeak.yaml`
-plugin/hooks/*: sibling                           # the hooks name the plugin
 research/sources/*: sibling,email                 # the plugin's name; a quoted example address
 research/synthesis/*: sibling                     # the plugin's name
 scripts/*: sibling                                # the plugin's name and the public siblings

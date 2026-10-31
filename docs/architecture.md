@@ -1,232 +1,45 @@
 # respeak architecture
 
-v1 — revised against the research synthesis. The evidence and full reasoning
-live in `research/synthesis/design-principles.md` (verdict, 12 principles,
-risks); this document states the resulting design.
+respeak renders agent work for a person. It holds one skill, one translator agent, a corpus of bad phrasing as data, a layered tone configuration, and three scripts that callers run without a session.
 
-**Synthesis verdict:** supported and unique. No existing system combines a
-governed evolving shorthand vocabulary + an always-on multi-register
-translator + a legibility feedback loop; every component has mature precedent
-(Anthropic sub-agent and attention-budget guidance; a century of codified
-expert shorthands; Agora/Caveman token economics).
+The machine lane left in 0.12.0 (packet `design/packets/r19-cut.md`, the owner's word of 2026-10-31): a ratified shorthand lexicon, its tooling, and a style-gate hook on every Write and Edit. It carried three terms and no traffic outside this repo. The code is in git history; `research/` keeps the studies behind it.
 
-## Problem
+## The translator
 
-Long-running agent sessions optimize their own traffic. Left alone, a swarm
-converges on compressed conventions ("shorthand") that cut token cost — the
-context-engineering principle says every token in inter-agent traffic is
-attention-taxed, so compression pressure is structural, not accidental. The
-failure mode is that the compressed dialect becomes alien to the human
-supervising the work: the human either fights the optimization (forcing the
-swarm to write prose, paying the tax everywhere) or loses the loop.
+`plugin/agents/respeak.md` is a subagent that reads the source, the resolved configuration and the corpus. Its only writes are rendered narratives. It runs in its own context window, so the calling session pays for the narrative alone. `respeak-render.sh` builds its system prompt from the same file, and a caller may ask for it by name as `respeak:respeak`.
 
-## Design: two lanes, one lexicon, one translator
+| Mode | The contract |
+| --- | --- |
+| `eli5` | no assumed background, one analogy at most, repaid at once |
+| `bluf` | the first sentence is the result, decision or ask; forwardable unedited |
+| `technical` | the conclusion first, evidence as file:line, open questions last |
 
-```
-                      ┌──────────────────────────┐
-   swarm traffic ────▶│  machine lane            │
-   (working agents)   │  shorthand, governed by  │
-                      │  corpus/lexicon.yaml     │
-                      └───────────┬──────────────┘
-                                  │ observed terms
-                                  ▼
-                      ┌──────────────────────────┐     proposals
-                      │  respeak translator      │────▶ .claude/respeak/proposals/
-                      │  (subagent, read-only    │      (human ratifies)
-                      │   toward swarm state)    │
-                      └───────────┬──────────────┘
-                                  │ narratives
-                                  ▼
-                      ┌──────────────────────────┐
-   human reader  ◀────│  human lane              │
-                      │  eli5 | bluf | technical │
-                      │  tuned by config         │
-                      └──────────────────────────┘
-```
+Every rendered narrative opens with a marker line, `📣 respeak · <mode>`, so the reader knows which voice is speaking. A rendered file holds the narrative alone: the headless renderer strips the marker and the agent's closing `gate:` and `config:` lines, and the skill and the agent state the same for a file they write.
 
-### The machine lane
+## What is never compressed
 
-The swarm may use any shorthand that is **ratified** in `plugin/corpus/lexicon.yaml`.
-The lexicon is the single source of truth, modeled on codified expert
-shorthands (brevity codes, Q-codes, ATC phraseology) and on the
-long-running-harness finding that structured registries resist agent drift
-where prose does not. Properties:
+`never_compress` in `plugin/config/respeak.config.yaml` holds seven classes, each with its failure story: error messages and stack traces, security findings, user quotes, numbers with units, safety and caution instructions, an ask with its owner and deadline, and identifiers, novel decisions and negations. The agent and the skill state the rule; `respeak-verify-edit.py` holds numbers across an editorial pass. A project may change the list in its committed file; a user or folder layer cannot.
 
-- **Append-mostly**: entries are proposed, ratified, or retired — never
-  silently edited or deleted.
-- **Legibility floor** (`shorthand.legibility_floor`): entries too alien are
-  rejected regardless of token savings. This is the "nudge" — the translator
-  prefers the variant of a convention closest to plain English, so the
-  dialect drifts toward needing *less* translation over time, not more.
-- **never_compress list**: error messages, security findings, user quotes,
-  numbers with units always pass verbatim (precedent: the Joint Commission
-  do-not-use abbreviation list — domains ban compression where it caused harm).
+## The corpus and the check
 
-Injection point: the ratified lexicon is surfaced to the swarm via CLAUDE.md
-(or an equivalent context file), so conventions are adopted at emission time
-rather than imposed by post-hoc rewriting.
+The rules are data (`plugin/corpus/*.yaml`), not prompt prose, so they are versionable and lintable. `respeak-measure.py` scans a narrative in zero tokens; the skill and the renderer rewrite up to two rounds against its report. `respeak-check.sh` applies the same scan to a repo's Markdown from committed config, for a make target or CI, and reads a setup failure as an error, never a pass. A project opts in with `gate.enabled: true` in its committed file. No hook runs any of this.
 
-### The translator
+## The editorial pass
 
-A subagent (`plugin/agents/respeak.md`) that is deliberately **non-impactful to the
-swarm**: it reads swarm output, transcripts, and the lexicon; its only writes
-are rendered narratives and lexicon proposals. It runs in its own context
-window (sub-agent architecture per the context-engineering post), so the
-swarm never pays wordsmithing tokens and the translator never pollutes
-working context.
+An editorial pass edits someone else's document in place. `respeak-verify-edit.py BEFORE AFTER` proves the edit prose-only: headings, block structure, links, fenced code, inline code and numbers byte-identical. `design/readme/contract.txt` and the same verifier make a README render an editorial pass rather than a summary.
 
-Entry points, cheapest first:
+## The layers
 
-| Surface | When it fires | Cost profile |
+`plugin/docs/config-layers.md` is the contract: plugin defaults, userConfig, user, ancestors, project, project local, scopes, folders, the session provider, `RESPEAK_CONFIG`, the invocation; nearest wins. Tone may vary anywhere. What the check covers and what is never compressed are project decisions, and the resolver drops them from other layers with a warning.
+
+## Who calls it
+
+| Caller | What it runs | What must stay |
 | --- | --- | --- |
-| `/respeak:respeak [mode] [source]` | user asks | one subagent turn, on demand |
-| `respeak` skill, natural language | "explain to my manager" and similar asks | same, model-triggered |
-| `respeak-render.sh` (headless) | CI or a swarm's own automation, through `claude -p` | one print-mode call per round, gated and retried |
-| Stop hook (milestone auto-narrative) | after a substantive turn, when `narrative.auto_narrative` resolves true (off by default) | one short paragraph of context per milestone |
-| SessionStart hook | session start, only in a project with `.claude/respeak/` and `hooks.session_start: true` (default `false`) | one sentence of context |
-| PostToolUse gate | Write or Edit of a Markdown file in a project with `gate.enabled: true` | one local scanner pass on the file as it was, blocking only on a `gate.block_on` verdict about what the write introduced |
-| `/respeak:init`, `/respeak:off [gate]`, `/respeak:on [gate]`, `/respeak:report`, `/respeak:include [write\|check]` | user asks | local script runs, no model turn |
-| lexicon proposals | as a side effect of translation | file writes only |
+| a repo's `make readme`, under `claude -p` | `/respeak:respeak technical <source>; <contract>` | the skill's `arguments: [mode, source]` |
+| a repo's `scripts/readme-render` | `respeak-render.sh`, `respeak-verify-edit.py` from the installed plugin | both, with `respeak-deadline.sh`, the measure, the resolver, the corpus, the agent |
+| a ledger tool's question render | `respeak-render.sh --contract` | the same |
+| an overnight queue's morning report | the agent `respeak:respeak` | the agent's name |
+| a repo's style target | `respeak-check.sh`, `respeak-include.py` from a source checkout | both, by path |
 
-Every hook honors the session overrides (resolved question 7): a marker from
-`/respeak:off` or `/respeak:on`, or `RESPEAK_HOOKS=off` and
-`RESPEAK_GATE=off|on` in the environment, is read before any work.
-
-### The human lane
-
-Three modes with distinct contracts (see `plugin/config/respeak.config.yaml` and
-`plugin/corpus/style/tone-mapping.md`):
-
-- **eli5** — no assumed background, one analogy max, repaid immediately.
-- **bluf** — first sentence is the result/decision/ask; forwardable unedited.
-- **technical** — conclusion first, evidence as file:line, open questions last.
-
-Every rendered narrative opens with a marker line, `📣 respeak · <mode>`,
-the human lane's counterpart to the machine lane's `register_marker`: the
-reader always knows which voice is speaking. The headless renderer strips
-it from files.
-
-All modes pass the same gates: replacements first, banned-phrase scan second,
-tone-axis behaviors throughout. The gates are data (`plugin/corpus/*.yaml`), not
-prompt prose, so they are versionable, lintable (Vale-compilable), and
-auditable.
-
-## The influence model
-
-The exposed configuration is the whole interface between the human and the
-optimization:
-
-1. **Narrative knobs** (`narrative.*`, `modes.*`): tone axes and tech_level
-   change how the human lane reads. They never touch the machine lane.
-   These are the keys any layer may set, down to a single folder
-   (resolved question 6).
-2. **Shorthand governance** (`shorthand.*`): ratification mode, legibility
-   floor, and the never-compress list bound how far the machine lane may
-   drift. The human changes a number; the swarm's dialect follows.
-3. **Corpus** (`plugin/corpus/*.yaml`): banned phrases and replacements are the
-   editorial voice, maintained as data with severities.
-
-Invariant: **the translator proposes, config disposes, the human ratifies.**
-No agent both proposes and ratifies a convention.
-
-## Resolved questions (details: research/synthesis/design-principles.md §2)
-
-The hook facts below are as the Claude Code hooks page stated them when
-re-read on 2026-10-14; re-open that page before relying on them.
-
-1. **Milestone auto-narrative → hooks, never cron.** Layered: a `Stop` hook
-   (input carries `last_assistant_message`) with an async milestone heuristic;
-   `SubagentStop`/`TaskCompleted` for swarm workers and phase boundaries; and
-   `MessageDisplay` → `displayContent` as the zero-context-cost display
-   translator — the human sees the translation while transcript and model
-   context keep the shorthand.
-2. **Lexicon injection → CLAUDE.md `@import` of a generated digest**
-   (`lexicon-active.md`, <200 lines), installed with consent by
-   `/respeak:init` since plugins can't ship CLAUDE.md; freshness via
-   `SessionStart`/`FileChanged` hooks injecting factual `additionalContext`.
-   `.claude/rules/*.md` with `paths:` gives register scoping (shorthand
-   allowed in `notes/**`, banned in `docs/**`). A skill is the wrong vehicle:
-   emission-time adoption needs session-start presence.
-3. **Vale compilation → yes, the designed CI path.** `respeak compile` emits a
-   `styles/Respeak/` package + `.vale.ini` with per-mode output globs; ratio
-   and judgment checks go to an LLM-judge post-processor; diagnostics feed
-   back to the translator as rewrite prompts. Precondition: the corpus schema
-   carries `exceptions`, declared anchor scope, and density tiers (done in
-   corpus v1).
-4. **Ratification fidelity → a three-layer gate** on Caveman's "$0.00 until
-   proven" burden: static sign-quality checks (min edit distance 2, no
-   near-neighbors of never_compress classes), a **fresh-decoder** round trip
-   (an agent with no interaction history expands samples from the lexicon
-   alone), and readback usage evidence for auto-fast-track.
-5. **tech_level 5 shorthand → feature, as explicit opt-in only.** The `author`
-   profile (`lexicon_access: inline`) is the one lawful convergence point of
-   the two lanes; guardrails: `register_marker: required`, never_compress and
-   reserved metawords stay verbatim, and author-profile traffic stays in the
-   monthly fresh-decoder audit sample.
-
-6. **Where configuration lives → layered, nearest to the target wins**
-   (v0.4; contract in `plugin/docs/config-layers.md`). The influence surface above
-   was one file per project, which made "different tones for different
-   folders" and "my default across every repo" both impossible. The
-   resolver (`plugin/scripts/respeak-config.py`) now merges, lowest first: plugin
-   defaults, the plugin's install-time userConfig, `~/.claude/respeak/
-   config.yaml`, ancestor `.respeak.yaml` files above the project, the
-   project's `.claude/respeak/config.yaml` and gitignored `config.local.yaml`,
-   `scopes:` entries keyed by `paths:` globs (the `.claude/rules` idiom),
-   folder `.respeak.yaml` files from the project root down, `$RESPEAK_CONFIG`
-   files, and the invocation's own flags. Two invariants keep the influence
-   model intact: governance keys (`gate.enabled`, `gate.include/exclude`,
-   `shorthand.*`) are project-only and dropped with a warning anywhere else,
-   so no folder or user file can switch enforcement or ratification; and
-   every consumer (gate hook, Stop hook, statusline, skill, headless render)
-   reads through the one resolver, with one project-root rule (nearest
-   `.claude/respeak/config.yaml` above the target, never the user config
-   directory, then the launch directory, then `.git`), so `explain` shows
-   the truth each of them saw. `narrative.profile` is expanded by the resolver, which wires
-   the audience profiles into the skill surface for the first time.
-7. **Session-scoped control → overrides above the layers, never a layer**
-   (v0.5; contract in `plugin/docs/config-layers.md`, "Session overrides"). The
-   manifest registers every hook for every installer; a session that does
-   not want one declines it with a marker (`/respeak:off [gate]`,
-   `/respeak:on [gate]`, written by `plugin/scripts/respeak-session.sh`) or with
-   the environment (`RESPEAK_HOOKS=off`, `RESPEAK_GATE=off|on`), and each
-   hook reads `plugin/scripts/respeak-override.sh` before doing anything else.
-   Precedence is marker, then environment, then the layers. The layers stay
-   about place and the overrides about time, so a personal preference never
-   has to be expressed by editing the manifest (which reaches every
-   installer), and `explain` still shows what the hooks saw.
-
-## Refinements the research forced (v0 → v1)
-
-- **Ratification alone is not governance.** The research asks for the full
-  codified-shorthand toolkit: size cap (~150), min token edit distance,
-  scheduled re-harmonization (90d), usage-based retirement (180d), reserved
-  repair metawords (CORRECTION, SAY-AGAIN, UNVERIFIED), in-band register
-  marking, readback for high-stakes messages, and monthly fresh-decoder
-  audits — because drift happens *inside* governed systems and the most
-  fluent agents deviate most (ICAO's lesson). Built in 0.9.0 to 0.11.0, in
-  `plugin/scripts/respeak-lexicon.py`: `check` holds the ratified terms to
-  the cap (150) and the edit distance (2), from each other and from the
-  reserved metawords, which the translator passes verbatim; it checks the
-  register marker, which the translator adds as ` · shorthand`. `use` records each use in
-  `.claude/respeak/uses.jsonl`, which merges by union; the translator names
-  the uses and the respeak skill records them. `ratify` says which
-  proposals the readback usage evidence makes eligible. `due` names the
-  entries due to retire (180 days unused) or for review (90 days), and
-  whether the fresh-decoder audit (30 days) is due, with its sample. Both
-  write nothing. `use --for CLASS` holds the readback classes, and names a
-  term to decompress after 2 failure uses. `audit` records a fresh agent's
-  reading of the sample in `.claude/respeak/audits.jsonl` and writes
-  `audited:`; `/respeak:audit` runs it. The swarm's side of the register
-  is planned in `NICE_TO_HAVE.md`.
-- **Capture, don't suppress.** FAIR 2017 suppressed emergent codewords by
-  rewarding English; respeak's differentiator is capturing them into the
-  lexicon as proposals, with the translator as the standing reward channel.
-  The nudge lives at the ratification boundary, never as per-message pressure.
-- **Three registers of access, not two lanes only:** `forbidden` /
-  `expand-first-use` / `inline`, keyed to audience profiles (who reads), which
-  are orthogonal to modes (what form) and context (reader state).
-- **Risks and mitigations** (drift, translator hallucination, nudge backfire,
-  governance ossification, platform rot) are enumerated with mitigations in
-  design-principles.md §4 — each mitigation is a config field or hook, not a
-  hope.
+Each is optional for its caller: without respeak it prints its source or names the install line.

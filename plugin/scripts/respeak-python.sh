@@ -3,9 +3,9 @@
 #   RESPEAK_PY      the first python3 that can import PyYAML — needed by the
 #                   config resolver and the measure/verify scripts
 #   RESPEAK_PY_STD  the first python3 that runs at all (stdlib only) — enough
-#                   to parse a hook's JSON payload
+#                   to parse JSON
 # A pyenv shim with no version selected exits 127 and a brew python often
-# lacks PyYAML, so a hard-coded `python3` made every hook a silent no-op.
+# lacks PyYAML, so a hard-coded `python3` made every caller a silent no-op.
 # Override the first with RESPEAK_PYTHON=/path/to/python3 (bypasses the cache).
 #
 # Probing is the expensive part (a pyenv shim costs ~70 ms per launch), so
@@ -19,7 +19,7 @@
 # run an arbitrary path. No usable cache directory means no cache.
 #
 #   . "$(dirname "$0")/respeak-python.sh"
-#   [ -n "$RESPEAK_PY" ] || exit 0          # hooks fail open
+#   [ -n "$RESPEAK_PY" ] || exit 2
 #
 # bash 3.2 compatible (macOS default).
 RESPEAK_PY_CANDIDATES="python3 /usr/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3 python3.13 python3.12"

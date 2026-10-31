@@ -9,23 +9,20 @@
 %% Any byte changed here makes every rendered file stale (the inputs hash covers
 %% this file); bump `@@ version` when the wording changes.
 @@ version
-2
+3
 @@ stamp
 <!-- respeak include v{{version}}, inputs {{inputs}}; regenerate with /respeak:include, do not edit -->
 @@ body
 # How to write in this repo
 
-Two lanes. Notes, packets, tool output and messages between agents are the
-machine lane. What a person reads is the human lane: replies to the
-user{{files}}.
-
-Machine lane: write in full. {{shorthand}} Never shorten error messages,
-security findings, the user's quotes, or numbers with units.
-
-Human lane: write for {{reader}} in {{mode}} mode: {{contract}} When the
-user names another reader, switch mode:
+What a person reads: replies to the user{{files}}. Write it for {{reader}}
+in {{mode}} mode: {{contract}} When the user names another reader, switch
+mode:
 
 {{switches}}
+
+Never shorten error messages, security findings, the user's quotes, or
+numbers with units, whoever reads the text.
 
 In every mode: short sentences, active voice, concrete words; no filler
 openers, no hype, no closing recap. Done, fixed, passing or green needs a
@@ -33,14 +30,10 @@ tool result that shows it; else say claimed, not verified, and what would
 verify it.
 
 The respeak plugin is optional: with it, `/respeak:respeak [mode]` renders
-a narrative and its gate checks these rules; without it, follow them by
+a narrative; without it, follow them by
 hand.
 @@ switch
 - {{mode}} ({{reader}}, "{{cue}}"): {{contract}}
-@@ shorthand lexicon
-Use shorthand only for the terms in `.claude/respeak/lexicon-active.md`.
-@@ shorthand none
-Use no shorthand: this repo ships no lexicon.
 @@ mode technical
 reader: a peer engineer
 cue: technical

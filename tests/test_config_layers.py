@@ -10,6 +10,7 @@ outcomes its README promises cannot drift.
 
 Run: python3 -m unittest discover tests -v
 """
+import ast
 import importlib.util
 import json
 import os
@@ -101,18 +102,16 @@ class LayerPrecedence(unittest.TestCase):
         self.assertEqual(narrative(res, "profile"), "peer-engineer")
         # the plugin layer's own profile: expands the fields the config
         # itself does not spell out
-        self.assertEqual(narrative(res, "lexicon_access"), "expand-first-use")
+        self.assertEqual(narrative(res, "address"), "you")
         self.assertFalse(rc.get_dotted(res.config, "gate.enabled"))
         self.assertEqual(res.warnings, [])
 
     def test_userconfig_env_beats_plugin(self):
         env = self.fx.env(CLAUDE_PLUGIN_OPTION_DEFAULT_MODE="bluf",
-                          CLAUDE_PLUGIN_OPTION_TECH_LEVEL="2",
-                          CLAUDE_PLUGIN_OPTION_AUTO_NARRATIVE="true")
+                          CLAUDE_PLUGIN_OPTION_TECH_LEVEL="2")
         res = self.fx.resolve(env=env)
         self.assertEqual(narrative(res, "default_mode"), "bluf")
         self.assertEqual(narrative(res, "tech_level"), 2)
-        self.assertIs(narrative(res, "auto_narrative"), True)
         self.assertIn("userConfig", res.origins["narrative.default_mode"])
 
     def test_user_file_beats_userconfig_env(self):
@@ -222,35 +221,35 @@ class MergeRules(unittest.TestCase):
         self.assertEqual(rc.get_dotted(res.config, "style.readability_metrics"), ["flesch_kincaid"])
 
     def test_project_only_keys_dropped_from_user_folder_and_scope(self):
-        self.fx.user("gate: {enabled: true}\nshorthand: {ratification: auto}\n")
+        self.fx.user("gate: {enabled: true}\nnever_compress: []\n")
         self.fx.proj("scopes:\n  - paths: ['docs/**']\n    gate: {enabled: true, include: ['docs/**']}\n")
-        self.fx.folder("docs", "gate: {enabled: true, exclude: ['x/**']}\nshorthand: {ratification: auto}\n")
+        self.fx.folder("docs", "gate: {enabled: true, exclude: ['x/**']}\nnever_compress: []\n")
         res = self.fx.resolve(target=self.fx.doc("docs/a.md"))
         self.assertFalse(rc.get_dotted(res.config, "gate.enabled"))
         self.assertEqual(rc.get_dotted(res.config, "gate.include"), ["**/*.md"])
         self.assertEqual(rc.get_dotted(res.config, "gate.exclude"), [])
-        self.assertEqual(rc.get_dotted(res.config, "shorthand.ratification"), "human")
+        self.assertTrue(rc.get_dotted(res.config, "never_compress"))
         dropped = [w for w in res.warnings if "project-only" in w]
         self.assertEqual(len(dropped), 7, res.warnings)
 
     def test_project_and_local_may_set_project_only_keys(self):
         self.fx.proj("gate: {enabled: true}\n")
-        self.fx.local("shorthand: {legibility_floor: 0.7}\n")
+        self.fx.local("never_compress: [{class: pager-numbers}]\n")
         res = self.fx.resolve()
         self.assertTrue(rc.get_dotted(res.config, "gate.enabled"))
-        self.assertEqual(rc.get_dotted(res.config, "shorthand.legibility_floor"), 0.7)
+        self.assertEqual(rc.get_dotted(res.config, "never_compress"), [{"class": "pager-numbers"}])
         self.assertEqual(res.warnings, [])
 
     def test_profile_expands_under_explicit_keys(self):
         self.fx.folder("docs", "narrative: {profile: exec, tech_level: 2}\n")
         res = self.fx.resolve(target=self.fx.doc("docs/a.md"))
         self.assertEqual(narrative(res, "default_mode"), "bluf")      # from exec
-        self.assertEqual(narrative(res, "lexicon_access"), "forbidden")  # from exec
+        self.assertEqual(narrative(res, "reading_level_grade"), 9)    # from exec
         self.assertEqual(narrative(res, "tech_level"), 2)             # explicit wins
         self.assertIn("(profile exec)", res.origins["narrative.default_mode"])
 
     def test_profile_defined_at_user_level_usable_in_a_folder(self):
-        self.fx.user("profiles: {household: {tech_level: 2, default_mode: eli5, lexicon_access: forbidden}}\n")
+        self.fx.user("profiles: {household: {tech_level: 2, default_mode: eli5}}\n")
         self.fx.folder("family", "narrative: {profile: household}\n")
         res = self.fx.resolve(target=self.fx.doc("family/a.md"))
         self.assertEqual(narrative(res, "default_mode"), "eli5")
@@ -407,33 +406,6 @@ class GateDecision(unittest.TestCase):
         self.assertEqual(d["fail_on"], "error")
         self.assertTrue(any("fail_on" in w for w in res.warnings))
 
-    def test_block_on_defaults_to_introduced(self):
-        self.fx.proj("gate: {enabled: true}\n")
-        res = self.fx.resolve(target=self.fx.doc("a.md"))
-        d = rc.gate_decision(res)
-        self.assertEqual(d["block_on"], "introduced")
-        self.assertEqual(res.warnings, [])
-
-    def test_any_layer_may_set_block_on(self):
-        # same policy as fail_on: enforcement leniency is not project-only, so
-        # a folder of pasted third-party text can ask for the whole-file check
-        self.fx.proj("gate: {enabled: true}\n")
-        self.fx.folder("docs", "gate: {block_on: any}\n")
-        d = rc.gate_decision(self.fx.resolve(target=self.fx.doc("docs/a.md")))
-        self.assertEqual(d["block_on"], "any")
-        d = rc.gate_decision(self.fx.resolve(target=self.fx.doc("a.md")))
-        self.assertEqual(d["block_on"], "introduced")
-        self.fx.user("gate: {block_on: any}\n")
-        d = rc.gate_decision(self.fx.resolve(target=self.fx.doc("a.md")))
-        self.assertEqual(d["block_on"], "any")
-
-    def test_bad_block_on_falls_back_to_introduced(self):
-        self.fx.proj("gate: {enabled: true, block_on: everything}\n")
-        res = self.fx.resolve(target=self.fx.doc("a.md"))
-        d = rc.gate_decision(res)
-        self.assertEqual(d["block_on"], "introduced")
-        self.assertTrue(any("block_on" in w for w in res.warnings))
-
 
 class ExampleTree(unittest.TestCase):
     """Pins the table in examples/layered/README.md."""
@@ -500,8 +472,6 @@ class CLI(unittest.TestCase):
         r = self.run_cli("resolve", "--format", "json", *common)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(json.loads(r.stdout)["narrative"]["default_mode"], "bluf")
-        r = self.run_cli("resolve", "--format", "statusline", *common)
-        self.assertEqual(r.stdout.strip(), "bluf/t1 exec @docs/.respeak.yaml")
         r = self.run_cli("resolve", "--format", "line", *common)
         self.assertIn("mode=bluf tech=1 profile=exec", r.stdout)
         r = self.run_cli("resolve", "--format", "yaml", "--mode", "eli5", "--set", "narrative.tech_level=4", *common)
@@ -524,11 +494,10 @@ class CLI(unittest.TestCase):
         self.assertIn("<- docs/.respeak.yaml (profile exec)", out)
         self.assertIn("gate.enabled is project-only; ignored", out)
         self.assertIn("gate: enabled=false", out)
-        self.assertIn("block_on=introduced", out)
 
     def test_gate_subcommand_writes_config(self):
         self.fx.proj("gate: {enabled: true}\n")
-        self.fx.folder("docs", "gate: {fail_on: warn, block_on: any}\n")
+        self.fx.folder("docs", "gate: {fail_on: warn}\n")
         doc = self.fx.doc("docs/a.md")
         out_cfg = os.path.join(self.fx.root, "resolved.yaml")
         r = self.run_cli("gate", "--project", self.fx.project, "--for", doc,
@@ -537,7 +506,6 @@ class CLI(unittest.TestCase):
         d = json.loads(r.stdout)
         self.assertTrue(d["applies"])
         self.assertEqual(d["fail_on"], "warn")
-        self.assertEqual(d["block_on"], "any")   # the gate hook reads it from here
         self.assertTrue(os.path.isfile(out_cfg))
         with open(out_cfg) as f:
             self.assertIn("fail_on: warn", f.read())
@@ -548,7 +516,7 @@ class CLI(unittest.TestCase):
         self.fx.proj("gate: {enabled: true}\n"
                      "scopes:\n  - paths: ['docs/**']\n    gate: {allow: ['x']}\n")
         write(os.path.join(self.fx.project, ".claude", "respeak", "config.local.yaml"),
-              "gate: {block_on: any}\n")
+              "gate: {fail_on: warn}\n")
         self.fx.folder("docs", "gate: {fail_on: none, allow: ['.*']}\n")
         env_cfg = os.path.join(self.fx.root, "env.yaml")
         write(env_cfg, "gate: {enabled: false}\n")
@@ -574,53 +542,16 @@ class CLI(unittest.TestCase):
         d = json.loads(r.stdout)
         self.assertTrue(d["committed"])
         self.assertTrue(d["applies"])
-        self.assertEqual((d["fail_on"], d["block_on"]), ("error", "introduced"))
+        self.assertEqual(d["fail_on"], "error")
         dropped = [x.rsplit(": ", 1)[1] for x in d["dropped"]]
-        self.assertEqual(sorted(dropped), ["gate.allow", "gate.block_on", "gate.enabled",
-                                           "gate.fail_on", "gate.fail_on"])
+        self.assertEqual(sorted(dropped), ["gate.allow", "gate.enabled",
+                                           "gate.fail_on", "gate.fail_on", "gate.fail_on"])
         self.assertTrue(any(x.startswith(env_cfg) for x in d["dropped"]))
         self.assertTrue(any("invocation" in x for x in d["dropped"]))
         with open(out_cfg) as f:
             g = rc.yaml.safe_load(f)["gate"]
         self.assertIn("x", g["allow"])             # the project scope's allow stands
         self.assertNotIn(".*", g["allow"])
-
-    def test_validate_accepts_block_on_in_any_layer(self):
-        folder = os.path.join(self.fx.project, "docs", ".respeak.yaml")
-        write(folder, "gate: {block_on: any}\n")
-        r = self.run_cli("validate", folder)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("[folder]: ok", r.stdout)
-        self.assertNotIn("block_on", r.stdout)
-
-    def test_validate_hooks_session_start(self):
-        # 0.8.0: hooks.session_start is a known key at any layer; a non-boolean is refused
-        user = os.path.join(self.fx.cfgdir, "respeak", "config.yaml")
-        write(user, "hooks: {session_start: true}\n")
-        r = self.run_cli("validate", user)
-        self.assertEqual(r.returncode, 0, r.stdout)
-        self.assertNotIn("unknown top-level key", r.stdout)
-        for text in ('hooks: {session_start: "yes"}\n', "hooks: {session_start: 1}\n",
-                     "hooks: true\n",
-                     "scopes:\n  - paths: [docs/]\n    hooks: {session_start: \"no\"}\n"):
-            folder = os.path.join(self.fx.project, "docs", ".respeak.yaml")
-            write(folder, text)
-            r = self.run_cli("validate", folder)
-            self.assertEqual(r.returncode, 1, text + r.stdout)
-            self.assertIn("hooks", r.stdout)
-        resolve = ("resolve", "--format", "json", "--project", self.fx.project,
-                   "--for", self.fx.project)
-        r = self.run_cli(*resolve)
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIs(json.loads(r.stdout)["hooks"]["session_start"], True)  # the user layer
-        os.remove(user)
-        r = self.run_cli(*resolve)
-        self.assertIs(json.loads(r.stdout)["hooks"]["session_start"], False)  # the default
-        # the resolver agrees with validate: a string is not a boolean true
-        self.fx.proj('hooks: {session_start: "true"}\n')
-        r = self.run_cli(*resolve)
-        self.assertIs(json.loads(r.stdout)["hooks"]["session_start"], False, r.stderr)
-        self.assertIn("hooks.session_start", r.stderr)
 
     def test_validate_policy_and_shape(self):
         good = os.path.join(self.fx.project, "docs", ".respeak.yaml")
@@ -640,9 +571,39 @@ class CLI(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("[user]", r.stdout)
         self.assertIn("absolute or ~-prefixed", r.stdout)
-        r = self.run_cli("validate", os.path.join(PLUGIN, "config", "respeak.config.yaml"),
-                         os.path.join(PLUGIN, "config", "project-seed.yaml"))
+        r = self.run_cli("validate", os.path.join(PLUGIN, "config", "respeak.config.yaml"))
         self.assertEqual(r.returncode, 0, r.stdout)
+
+    def test_a_config_with_the_removed_keys_warns_and_exits_0(self):
+        # an upgrader's old file: r19 removed these keys, and no old file is refused for them
+        old = ("hooks: {session_start: true}\n"
+               "shorthand: {old_knob: [incident]}\n"
+               "gate: {enabled: true, block_on: error}\n"
+               "narrative: {lexicon_access: read}\n")
+        proj = os.path.join(self.fx.project, ".claude", "respeak", "config.yaml")
+        write(proj, old)
+        r = self.run_cli("validate", proj)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("[project]: ok (with warnings)", r.stdout)
+        self.assertIn("unknown top-level key 'hooks'", r.stdout)
+        self.assertIn("unknown top-level key 'shorthand'", r.stdout)
+        self.assertNotIn("error:", r.stdout)
+        doc = self.fx.doc("docs/a.md")
+        r = self.run_cli("resolve", "--project", self.fx.project, "--for", doc,
+                         "--walk-from", self.fx.root, "--format", "json")
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_the_resolver_calls_only_what_it_defines(self):
+        # the statusline format left with statusline.sh, and its branch with it
+        with open(RESOLVER, encoding="utf-8") as f:
+            source = f.read()
+        tree = ast.parse(source)
+        defined = {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}
+        called = {n.func.id for n in ast.walk(tree)
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                  and n.func.id.startswith("fmt_")}
+        self.assertEqual(called - defined, set())
+        self.assertNotIn("statusline", source)
 
     def test_project_discovery_without_flag(self):
         self.fx.proj("narrative: {default_mode: bluf}\n")
@@ -670,7 +631,7 @@ class Discovery(unittest.TestCase):
     def test_user_file_is_never_a_project_file(self):
         # the headline recipe: a user file, a repo with .git and no project config
         self.fx.user("narrative: {default_mode: bluf}\ngate: {enabled: true, include: ['**/*.md']}\n"
-                     "shorthand: {ratification: auto}\n")
+                     "never_compress: []\n")
         os.makedirs(os.path.join(self.fx.project, ".git"))
         doc = self.fx.doc("README.md")
         env = self.fx.env()
@@ -679,7 +640,7 @@ class Discovery(unittest.TestCase):
         self.assertIn(".git", res.project_how)
         self.assertEqual(narrative(res, "default_mode"), "bluf")  # tone from the user file applies
         self.assertFalse(rc.get_dotted(res.config, "gate.enabled"))
-        self.assertEqual(rc.get_dotted(res.config, "shorthand.ratification"), "human")
+        self.assertTrue(rc.get_dotted(res.config, "never_compress"))
         kinds = [lay.kind for lay in res.applied]
         self.assertEqual(kinds.count("project"), 0)
         self.assertFalse(rc.gate_decision(res)["applies"])
@@ -780,7 +741,7 @@ class ProfilesAndGlobs(unittest.TestCase):
         res = self.fx.resolve(target=self.fx.doc("a.md"))
         self.assertEqual(narrative(res, "default_mode"), "bluf")
         self.assertEqual(narrative(res, "tech_level"), 2)
-        self.assertEqual(narrative(res, "lexicon_access"), "forbidden")
+        self.assertEqual(narrative(res, "reading_level_grade"), 9)
         # same outcome whichever layer carries the partial profile
         self.fx.proj("narrative: {profile: exec}\n")
         self.fx.user("profiles: {exec: {tech_level: 2}}\n")
@@ -821,12 +782,12 @@ class ProfilesAndGlobs(unittest.TestCase):
     def test_set_parsing(self):
         ns = type("A", (), {})()
         ns.mode = ns.profile = ns.context = None
-        ns.set = ["gate.allow=spine", "narrative.tone.formality=0.9", "narrative.auto_narrative=yes", "gate.include=docs/**"]
+        ns.set = ["gate.allow=spine", "narrative.tone.formality=0.9", "narrative.mode_select=yes", "gate.include=docs/**"]
         ov = rc.parse_overrides(ns)
         self.assertEqual(ov["gate"]["allow"], ["spine"])
         self.assertEqual(ov["gate"]["include"], ["docs/**"])
         self.assertEqual(ov["narrative"]["tone"]["formality"], 0.9)
-        self.assertEqual(ov["narrative"]["auto_narrative"], "yes")  # not the YAML-1.1 boolean
+        self.assertEqual(ov["narrative"]["mode_select"], "yes")  # not the YAML-1.1 boolean
 
     def test_user_scope_written_through_a_symlink_still_matches(self):
         link = os.path.join(self.fx.root, "link")
@@ -901,7 +862,7 @@ class V043Paths(unittest.TestCase):
     def test_symlinked_config_dir_is_never_a_project(self):
         # dotfiles-managed ~/.claude -> dot/claude; the user file enables the gate
         real_dir = os.path.join(self.fx.home, "dot", "claude")
-        write(os.path.join(real_dir, "respeak", "config.yaml"), "gate: {enabled: true}\nshorthand: {ratification: auto}\n")
+        write(os.path.join(real_dir, "respeak", "config.yaml"), "gate: {enabled: true}\nnever_compress: []\n")
         link = os.path.join(self.fx.home, "claude-link")
         os.symlink(real_dir, link)
         doc = self.fx.doc("docs/a.md")  # repo with no config, no .git
@@ -909,7 +870,7 @@ class V043Paths(unittest.TestCase):
         res = rc.resolve(target=doc, plugin_root=PLUGIN, env=env, walk_from=self.fx.root)
         self.assertEqual(res.project, self.fx.project)
         self.assertFalse(rc.get_dotted(res.config, "gate.enabled"))
-        self.assertEqual(rc.get_dotted(res.config, "shorthand.ratification"), "human")
+        self.assertTrue(rc.get_dotted(res.config, "never_compress"))
         self.assertEqual([lay.kind for lay in res.applied].count("project"), 0)
         # and with the link's parent as the candidate project root (a session launched in ~)
         res = rc.resolve(target=doc, plugin_root=PLUGIN, env={"CLAUDE_CONFIG_DIR": link}, walk_from=self.fx.root,
@@ -975,13 +936,11 @@ class V043Merge(unittest.TestCase):
         self.addCleanup(self.fx.cleanup)
 
     def test_bool_words_on_boolean_keys(self):
-        self.fx.proj("gate: {enabled: true}\nnarrative: {auto_narrative: true}\n")
+        self.fx.proj("gate: {enabled: true}\n")
         doc = self.fx.doc("a.md")
         for word, expect in (("no", False), ("off", False), ("false", False), ("yes", True), ("on", True), ("0", False)):
             res = self.fx.resolve(target=doc, overrides={"gate": {"enabled": word}})
             self.assertIs(rc.get_dotted(res.config, "gate.enabled"), expect, word)
-        res = self.fx.resolve(target=doc, overrides={"narrative": {"auto_narrative": "off"}})
-        self.assertIs(narrative(res, "auto_narrative"), False)
         res = self.fx.resolve(target=doc, overrides={"gate": {"enabled": "maybe"}})
         self.assertIs(rc.get_dotted(res.config, "gate.enabled"), True)
         self.assertTrue(any("not a boolean spelling" in w for w in res.warnings))
@@ -1061,51 +1020,39 @@ class V043CLI(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# r2: a shorthand key with no observable behaviour is not shipped (README:
-# a config field with no observable behaviour is deleted); NICE_TO_HAVE.md
-# holds the plan for the removed ones. r16 and r17 return each key with its
-# reader, scripts/respeak-lexicon.py.
+# r19: the machine lane is gone; never_compress is what stayed of it
 # ---------------------------------------------------------------------------
 
-class ShorthandGovernanceKeys(unittest.TestCase):
+class NeverCompress(unittest.TestCase):
     SHIPPED = os.path.join(PLUGIN, "config", "respeak.config.yaml")
-    # tagged [not built] in 66531f7: declared, and nothing read them
-    NOT_BUILT = ()
-    # the keys with behaviour: a fixed path the scripts use, the translator's prompt,
-    # or respeak-lexicon.py (r16: check reads the cap and the distance, ratify those and
-    # auto; r17: due reads the three clocks; r18: check and ratify the reserved
-    # metawords, check and the translator the register marker, use the readback and
-    # decompress triggers; none is left unbuilt)
-    KEPT = {"lexicon", "proposal_dir", "ratification", "legibility_floor", "never_compress",
-            "max_entries", "min_token_edit_distance", "auto",
-            "retire_after_days_unused", "review_cadence_days", "legibility_audit",
-            "reserved_metawords", "register_marker", "readback_required_for", "decompress_on"}
+    AGENT = os.path.join(PLUGIN, "agents", "respeak.md")
+    SKILL = os.path.join(PLUGIN, "skills", "respeak", "SKILL.md")
+    CLASSES = {"error-messages-and-stack-traces", "security-findings", "user-quotes",
+               "numbers-with-units", "safety-and-caution-instructions",
+               "ask-owner-and-deadline", "identifiers-novel-decisions-negations"}
 
     def setUp(self):
         self.fx = Fixture()
         self.addCleanup(self.fx.cleanup)
 
-    def test_shipped_config_holds_no_not_built_key(self):
+    def test_the_defaults_hold_the_classes_at_the_top_level(self):
         with open(self.SHIPPED) as f:
-            text = f.read()
-        shorthand = rc.yaml.safe_load(text)["shorthand"]
-        self.assertEqual([k for k in self.NOT_BUILT if k in shorthand], [])
-        self.assertNotIn("[not built]", text)
-        self.assertEqual(set(shorthand), self.KEPT)
-        # the resolver's lowest layer is that file, so plugin defaults alone know only these
+            shipped = rc.yaml.safe_load(f)
+        self.assertNotIn("shorthand", shipped)
+        self.assertNotIn("hooks", shipped)
+        self.assertEqual({e["class"] for e in shipped["never_compress"]}, self.CLASSES)
         res = self.fx.resolve()
-        self.assertEqual(set(rc.get_dotted(res.config, "shorthand")), self.KEPT)
+        self.assertEqual({e["class"] for e in rc.get_dotted(res.config, "never_compress")}, self.CLASSES)
 
-    def test_a_file_that_still_sets_one_gets_the_unknown_key_treatment(self):
-        # from a user layer: shorthand.* is project-only, dropped with the warning
-        self.fx.user("shorthand: {old_knob: [incident]}\n")
+    def test_a_user_layer_cannot_shorten_it(self):
+        self.fx.user("never_compress: []\n")
         res = self.fx.resolve()
-        self.assertIn("%s: shorthand is project-only; ignored"
-                      % os.path.join(self.fx.cfgdir, "respeak", "config.yaml"), res.warnings)
-        self.assertIsNone(rc.get_dotted(res.config, "shorthand.old_knob"))
-        # from a project layer: merged as any unknown nested key is, and read by nothing;
-        # validate refuses no old file for it
-        proj = os.path.join(self.fx.project, ".claude", "respeak", "config.yaml")
-        write(proj, "shorthand: {old_knob: [incident], register_markers: \"~\"}\n")
-        errors, _ = rc.validate_file(proj, "project", self.fx.env(), PLUGIN)
-        self.assertEqual(errors, [])
+        self.assertEqual({e["class"] for e in rc.get_dotted(res.config, "never_compress")}, self.CLASSES)
+        self.assertTrue(any("never_compress is project-only" in w for w in res.warnings), res.warnings)
+
+    def test_the_agent_and_the_skill_state_the_rule(self):
+        for path in (self.AGENT, self.SKILL):
+            with open(path, encoding="utf-8") as f:
+                text = " ".join(f.read().split())
+            for phrase in ("error messages", "security findings", "user quotes", "numbers with units"):
+                self.assertIn(phrase, text, path)

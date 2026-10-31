@@ -8,7 +8,7 @@
 #   provider: ...        (the line `respeak-config.sh explain --for README.md` prints)
 #   config: <n> unknown keys   (user, project and project-local files; never fatal)
 #
-# Exit 0, or 2 when no python3 can import PyYAML (every hook is then a no-op).
+# Exit 0, or 2 when no python3 can import PyYAML (no script runs then).
 # Reads only: the plugin's own files, `claude --version`, and the two
 # `claude plugin ... --json` lists. Writes nothing. bash 3.2 compatible.
 #

@@ -7,7 +7,6 @@ profiles:
   household:                # a profile every repo on this machine can name
     tech_level: 2
     default_mode: eli5
-    lexicon_access: forbidden
     reading_level_grade: 8
     address: you
 scopes:

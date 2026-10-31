@@ -2,6 +2,41 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
+## 0.12.3 (2026-10-31)
+
+The installed 0.11.0 passed the same command, rc 0, `num_turns` 19, with five Bash denials absorbed: the Agent tool is not refused under `--allowedTools 'Read Write'`, and a subagent's turns do not count against `--max-turns 8`. The rule of 0.12.1 and 0.12.2, that a contract naming a file works inline, was the regression, and both turn counts rested on it.
+
+- `/respeak:respeak` hands every render to the `respeak:respeak` agent again, a contract's too, with the source minus the `;`, the contract text and the path it names. The agent writes the file, the narrative alone.
+- A denied tool is never retried: a denied resolve or measure is skipped, and the render goes on unmeasured.
+- Inline is only for a real refusal of the Agent tool: the reads in one message, one Write, one short line, no measure and no verifier.
+
+## 0.12.2 (2026-10-31)
+
+A real render under `--allowedTools 'Read Write' --max-turns 8` ended `error_max_turns` at 9 turns: five calls denied. The seven turns 0.12.1 states assumed Bash, and they were wrong.
+
+- `/respeak:respeak` gains a Read-and-Write path, taken when a contract names a file or a Bash or Agent call is denied: the reads in one message, one Write, one short line, three turns by its text. It runs no measure and no verifier, and says so. Where Bash works, the fuller path stands.
+
+## 0.12.1 (2026-10-31)
+
+The refuter's round on the cut.
+
+- A rendered file holds the narrative alone. `respeak-render.sh` strips the agent's closing `gate:` and `config:` lines as it strips the marker, and the skill and the agent say the same for a file they write; the marker, those lines and a still-failing report go in the answer.
+- `/respeak:respeak` with a contract that names a file renders in its own session in seven turns, inside a caller's `--max-turns 8`: no try at the agent, and the reads in one message.
+- `respeak-config.py` loses the unreachable `fmt_statusline` branch.
+- Back in the suites: `validate` on a config with the removed keys, and the `.mdx`, upper-case and non-Markdown cases of the check.
+
+## 0.12.0 (2026-10-31)
+
+The machine lane, the gate hook and the lexicon tooling leave, on the owner's word of 2026-10-31. This is breaking; `0.x` may break on a minor.
+
+- No hooks ship: the PostToolUse style gate on every Write and Edit, the SessionStart lexicon note and the Stop narrative nudge are gone, with `hooks/hooks.json`, `respeak-gate.sh`, `lexicon-status.sh` and `stop-narrative.sh`.
+- The lexicon is gone: `respeak-lexicon.py`, `render-lexicon-digest.sh`, `corpus/lexicon.yaml`, the digest import, `/respeak:audit`.
+- With nothing left to silence or seed: `/respeak:on`, `/respeak:off`, `respeak-override.sh`, `respeak-session.sh`, `RESPEAK_HOOKS`, `RESPEAK_GATE`; `/respeak:init`, `project-seed.yaml`, `respeak-include.py propose`; `statusline.sh` and `--format statusline`. `/respeak:report` and `report-env.sh` leave too; no caller used them.
+- Keys with no reader: `shorthand.*`, `hooks.*`, `gate.block_on`, `narrative.auto_narrative`, `narrative.lexicon_access`, the userConfig `auto_narrative`.
+- `never_compress` is a top-level project-only key, without `reserved-metawords`. The agent and the skill both state the rule.
+- `/respeak:respeak` is one page, 55 lines. It keeps `arguments: [mode, source]` and names the `; <contract>` form callers use. Where the agent tool is refused, it follows the agent's file itself.
+- `respeak-check.sh` keeps its verdict and its exits, with the committed gate inside it. `respeak-render.sh`, `respeak-verify-edit.py`, `respeak-measure.py`, `respeak-config.sh`, `respeak-include.py` and `/respeak:include` stay for their callers. The include template moves to version 3, so a rendered include file reads stale until its author rewrites it.
+
 ## 0.11.0 (2026-10-17)
 
 - The repair channel: `shorthand.reserved_metawords` (CORRECTION,

@@ -1,7 +1,7 @@
 ---
 name: respeak
 description: >
-  Translate agent/swarm output into a human-facing narrative. Fires on
+  Render agent output or a file as a human-facing narrative. Fires on
   /respeak:respeak [mode] [source] and on asks like "explain that to my manager",
   "give me the ELI5", "make this readable".
 argument-hint: "[eli5|bluf|technical] [text or file path — defaults to this session's latest outcome]"
@@ -9,76 +9,52 @@ arguments: [mode, source]
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/scripts/respeak-config.sh *) Bash(${CLAUDE_PLUGIN_ROOT}/scripts/py *)
 ---
 
-# respeak — render a narrative
+# respeak: render a narrative
 
-Effective configuration for the working directory (plugin defaults,
-`~/.claude/respeak/config.yaml`, the project's `.claude/respeak/config.yaml`
-and its `scopes:`, any folder `.respeak.yaml`; nearest wins. The contract
-is `docs/config-layers.md`):
+The invocation: `$ARGUMENTS`. A caller may add a contract after a `;`, as in
+`/respeak:respeak technical design/readme/source.md; <contract>`: the source is
+the path before the `;`, and the contract binds this render.
 
+Effective configuration for this directory:
 !`"${CLAUDE_PLUGIN_ROOT}/scripts/respeak-config.sh" explain --brief --launch-dir "${CLAUDE_PROJECT_DIR}"`
 
-The last line above names any session override in force. Overrides silence
-hooks; they never change this skill, which runs because the user asked.
+**Never compress.** In every mode these pass verbatim: error messages and stack
+traces, security findings, user quotes, numbers with units, safety and caution
+instructions, an ask with its owner and deadline, identifiers, novel decisions
+and negations.
 
-Steps:
+A denied tool is never retried: a denied step 3 or 5 is skipped, the render unmeasured.
 
-1. Determine the mode. `$mode` if given and one of `eli5|bluf|technical`;
-   otherwise infer from the audience the user named (a child, a newcomer,
-   "plain English" → eli5; a manager, exec, "bottom line", "leadership" →
-   bluf; an engineer, reviewer, "for the PR/docs" → technical); otherwise
-   the effective `narrative.default_mode` shown above, which already
-   reflects the user, project, and folder layers for this directory.
-2. Determine the source material. `$source` if given (text or a readable
-   file path); otherwise this session's most recent substantive outcome —
-   the latest completed task, findings, or state change, including any
-   shorthand used along the way.
-3. Resolve the configuration for the target. The target is the source file
-   when `$source` is a file path (a folder's `.respeak.yaml` governs the
-   files in it), otherwise the working directory. Run (quote the paths as
-   shown; `--out` writes the file so no shell redirect is needed):
-   `"${CLAUDE_PLUGIN_ROOT}/scripts/respeak-config.sh" resolve --for "<target>" --launch-dir "${CLAUDE_PROJECT_DIR}" [--mode <mode>] --format yaml --out "/tmp/respeak-${CLAUDE_CODE_SESSION_ID}.yaml"`
-   Add `--profile <name>` when the user named an audience that matches a
-   profile the config defines under `profiles:` (for example "for the exec
-   audience" → `exec`, or a household profile the user defined at user level);
-   run `"${CLAUDE_PLUGIN_ROOT}/scripts/respeak-config.sh" explain --for "<target>" --launch-dir "${CLAUDE_PROJECT_DIR}"`
-   when you need the full layer-by-layer listing.
-4. Delegate to the `respeak:respeak` agent with: the mode, the contents of
-   that resolved config file verbatim under a heading
-   `Resolved respeak configuration`, the source material, and the working
-   directory; ask it for its `uses:` line. Do not translate inline
-   yourself — the agent owns the corpus gates and lexicon bookkeeping, and
-   an inline paraphrase bypasses both.
-5. Verify before relaying — do not trust the agent's narrative on its own
-   report. First drop each reply's last line when it reads `uses: …`:
-   step 6 records it; it is neither scanned nor relayed. Feed the narrative
-   to the scanner on stdin (a heredoc; no temp file, so no file-write
-   permission is needed):
+1. **The mode.** `$mode` if it is `eli5`, `bluf` or `technical`; otherwise by the
+   audience named (a child, "plain English": eli5; a manager, "bottom line": bluf;
+   an engineer, "for the docs": technical); otherwise `narrative.default_mode` above.
+2. **The source.** `$source` if given, text or a readable file path, without a
+   trailing `;`; otherwise this session's latest substantive outcome.
+3. **The configuration.** The target is the source file when there is one (a
+   folder's `.respeak.yaml` governs the files in it), else the working directory:
+   `"${CLAUDE_PLUGIN_ROOT}/scripts/respeak-config.sh" resolve --for "<target>" --launch-dir "${CLAUDE_PROJECT_DIR}" [--mode <mode>] [--profile <name>] --format yaml --out "/tmp/respeak-${CLAUDE_CODE_SESSION_ID}.yaml"`
+   Add `--profile` when the user named an audience matching a `profiles:` entry.
+4. **The render.** Hand every render to the `respeak:respeak` agent, a contract's too,
+   since a caller's `--max-turns` does not count its turns: the mode, that file's
+   contents under the heading `Resolved respeak configuration` if step 3 made it, the
+   source, the contract text verbatim, the path it names, and the working directory.
+   The agent writes that file. Only where the Agent tool is refused, render here with
+   Read and Write: (1) in one message, Read the source, the file the contract names if
+   it exists, and from `${CLAUDE_PLUGIN_ROOT}/` `agents/respeak.md`,
+   `config/respeak.config.yaml`, `corpus/banned-phrases.yaml`, `corpus/replacements.yaml`
+   and `corpus/style/tone-mapping.md`, with the project's `.claude/respeak/` copies;
+   read nothing after it. (2) Make the pass and Write the file once. (3) Answer in one
+   short line. No Edit, no second rewrite, no measure and no verifier there.
+5. **The check.** Trust no narrative unmeasured. Feed it to the scanner on stdin, or
+   name the file the agent wrote in place of `-`:
    ```
    "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-measure.py - --fail-on error --config "/tmp/respeak-${CLAUDE_CODE_SESSION_ID}.yaml" <<'RESPEAK_EOF'
    <the narrative, verbatim>
    RESPEAK_EOF
    ```
-   (the resolved config carries every layer's `gate.allow` and
-   `style.budgets`, so a project's or folder's exceptions apply).
-   - Exit 0: relay the narrative verbatim, its opening `📣 respeak · <mode>`
-     marker line included — do not re-wrap, soften, or append commentary.
-     If the agent omitted the marker, add it as the first line.
-   - Exit 1: send the printed report back to the `respeak:respeak` agent and
-     ask for a rewrite that clears every error-severity hit; run the check
-     again. Allow at most 2 rounds total.
-   - Still exit 1 after 2 rounds: relay the narrative anyway (marker line
-     first), with the final measure report appended under a `respeak gate:
-     still failing after 2 rounds` heading — the human sees exactly what did not clear, instead of
-     a silently-shipped violation. Do not attempt a 3rd round yourself.
-6. Record the uses, once, from the agent's first `uses:` line; `uses: none`
-   records nothing. For each `` `<term>` <outcome> `` item, run
-   `"${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-lexicon.py use '<term>' --outcome <outcome> [--readback] [--for <class>] --source "<source>" --root "${CLAUDE_PROJECT_DIR}"`
-   with `--readback` when the item holds ` readback`, `--for <class>` when
-   it ends ` for <class>`, and `<source>` the `$source` file path, else
-   `session ${CLAUDE_CODE_SESSION_ID}`. A refusal naming
-   `no .claude/respeak/` means the project keeps no use record: skip the
-   rest silently. Name any other refusal in one line after the narrative,
-   and relay there each `decompress:` line `use` prints.
-7. If the agent reports lexicon proposals, list the proposed terms in one
-   line and note that ratification is pending per the shorthand config.
+   Exit 1: send the report to the agent for a rewrite that clears every error-severity
+   hit and check again, at most 2 rounds. Still failing: go on, the final report under `respeak gate: still failing after 2 rounds`.
+6. **The answer.** Relay the narrative verbatim, its `📣 respeak · <mode>` marker
+   line first, with no commentary. A file holds the narrative alone: no marker line,
+   no `gate:` or `config:` line, no report from step 5, none of this answer. Then answer
+   with the path in one short line, any such report after it.

@@ -67,18 +67,13 @@ data:
 
 narrative:
   profile: peer-engineer  # a name from `profiles:` below. Sugar: the profile's
-                          # fields (tech_level, default_mode, lexicon_access,
+                          # fields (tech_level, default_mode,
                           # reading_level_grade, address) are filled in UNDER
                           # any explicit key written in the same file/layer, so
                           # a folder file saying `profile: exec` plus
                           # `tech_level: 2` gets exec's mode with tech_level 2.
   default_mode: technical # eli5 | bluf | technical
   mode_select: fixed      # fixed | compass (Diátaxis 2-question classifier, opt-in)
-  auto_narrative: false   # Stop hook nudges a one-paragraph narrative after
-                          # milestone turns (scripts/stop-narrative.sh); also
-                          # settable at install: --config auto_narrative=true.
-                          # RESPEAK_HOOKS=off or /respeak:off silences the hook
-                          # for one session (docs/config-layers.md, Session overrides)
   context_default: routine # per-invocation: incident | routine | celebration
                            # (Mailchimp: tone conditions on reader state;
                            #  incident forces plain language + decompression)
@@ -96,19 +91,16 @@ narrative:
 profiles:
   exec:
     tech_level: 1
-    lexicon_access: forbidden
     reading_level_grade: 9
     default_mode: bluf
     address: you
   peer-engineer: # fills the tech_level-3 gap the three modes leave open
     tech_level: 3
-    lexicon_access: expand-first-use
     reading_level_grade: null
     default_mode: technical
     address: you
-  author: # tech_level-5: the opt-in shorthand reader
+  author: # tech_level-5: the one who wrote it
     tech_level: 5
-    lexicon_access: inline # the only profile where the two lanes may converge
     reading_level_grade: null
     default_mode: technical
     address: you
@@ -128,7 +120,7 @@ modes:
     common_ground_opener: true    # Maxwell: open with something the reader knows
     metaphor_budget: 1            # the one paid-for analogy...
     analogy_must_close: true      # ...and it must say what it maps to
-    lexicon_terms: forbidden      # zero shorthand, zero undefined abbreviations
+    undefined_abbreviations: forbidden
     contractions: allowed
     checks: # LLM-judge checks, not lint
       - understand-feel-do        # what happened / why you care / what next
@@ -173,7 +165,6 @@ modes:
     structure: finding-first    # conclusion → evidence file:line → open questions
     open_questions_require_test: true # end claims with a falsifiable check
     metaphor_budget: 0
-    lexicon_terms: expand-first-use # ratified terms free after first expansion
     passive_allowed_when: agent-unknown # STE descriptive rule; never for style
     procedural: # applies to embedded steps in any mode
       active_voice: 1.0 # STE: instructions 100% active/imperative
@@ -195,7 +186,7 @@ style:
   contractions: allowed
   negative_contractions: never # GOV.UK: "cannot", never "can't" — misread as opposite
   positive_form: true          # no double negatives
-  same_term_same_concept: true # plainlanguage #11 + STE; lint against lexicon
+  same_term_same_concept: true # plainlanguage #11 + STE
   quoting_exempt: true         # quotes/code blocks exempt from bans
   readability_metrics: [flesch_kincaid, gunning_fog] # DECLARED, NOT COMPUTED:
                         # no script computes a grade; respeak-measure.py counts
@@ -228,22 +219,10 @@ style:
     behavior_not_person: true
 
 gate:
-  # Enforcement of style.budgets and the banned-phrase corpus on Write|Edit,
-  # via the PostToolUse hook scripts/respeak-gate.sh (hooks/hooks.json).
-  # Every knob here maps to that script's behavior — no knob without a
-  # behavior, same contract as the rest of this file.
-  #
-  # The gate is per-project OPT-IN: this plugin-level default is `enabled:
-  # false`, and the hook itself does nothing unless a project's own
-  # `.claude/respeak/config.yaml` sets `enabled: true` (skills/init/SKILL.md
-  # seeds that file from this one, with the gate left off; a human turns it
-  # on once the project trusts its excludes/allow list). This file is never
-  # the one the hook reads for enforcement decisions on someone else's repo.
-  #
-  # Session overrides sit above every layer (docs/config-layers.md, "Session
-  # overrides"): RESPEAK_GATE=off|on and RESPEAK_HOOKS=off for one launch,
-  # /respeak:off [gate] and /respeak:on [gate] for the session you are in.
-  # `on` applies this block with `enabled` forced true; nothing else changes.
+  # What scripts/respeak-check.sh enforces on demand, by hand or in CI, and what
+  # the renderer's measure reads. No hook runs it. A project opts in with
+  # `enabled: true` in its own committed `.claude/respeak/config.yaml`; the check
+  # skips every file otherwise. Every knob maps to that script's behavior.
   enabled: false        # project-only: a user or folder layer cannot turn it on
   include: ["**/*.md"] # project-only. globs, matched relative to the project dir.
                         # The gate covers Markdown files only (.md .markdown .mdx,
@@ -253,17 +232,6 @@ gate:
   fail_on: error         # none | warn | error — passed straight to
                         # respeak-measure.py --fail-on. Any layer may set it,
                         # so a folder can soften to `warn` for its own files.
-  block_on: introduced   # introduced | any — what the verdict is measured
-                        # against. `introduced` hands measure a --baseline of
-                        # the file as it was (the committed version, else the
-                        # pre-edit text rebuilt from the Edit, else empty) and
-                        # blocks only on hits the write added, so a document
-                        # that already carries one — a banned term inside a
-                        # heading, which the editorial pass may not move —
-                        # stays editable, and the model is told about the
-                        # leftovers instead. `any` gates the whole file, the
-                        # behavior before v0.6. Any layer may set it.
-                        # `respeak-gate.sh --file` is whole-file either way.
   allow: []              # regexes; appends across layers (a user-level allow
                         # for a domain vocabulary is legitimate). A corpus
                         # rule whose pattern/phrase matches
@@ -272,68 +240,17 @@ gate:
                         # exceptions: don't cover yet — file the gap rather
                         # than leaving this as the permanent fix)
 
-hooks:
-  # Which of the plugin's always-on hooks speak. The gate and the Stop nudge
-  # keep their own keys (gate.enabled, narrative.auto_narrative).
-  session_start: false  # true: the SessionStart hook (scripts/lexicon-status.sh)
-                        # names the lexicon and its ratified-term count at each
-                        # session start, in a project with .claude/respeak/.
-                        # Any layer may set it; RESPEAK_HOOKS=off and
-                        # /respeak:off still silence it.
-
-shorthand: # project-only: governance never varies by folder or by user
-  # The resolver merges every key below; each is tagged with what holds it.
-  #   [instruction-only] the translator agent's prompt names it; no script checks it
-  #   [fixed path]       the scripts and the agent use a fixed path; this key is not read
-  #   [respeak-lexicon.py VERB] scripts/respeak-lexicon.py reads it in that verb
-  # A key nothing reads is not shipped (a knob with no behaviour is removed). A
-  # file that sets an unknown key gets: dropped as project-only from a user or
-  # folder layer, merged and unread from a project layer.
-  lexicon: corpus/lexicon.yaml # [fixed path] .claude/respeak/lexicon.yaml, else this seed
-  max_entries: 150 # [respeak-lexicon.py check, ratify] the cap on ratified entries, the digest's terms
-  min_token_edit_distance: 2 # [respeak-lexicon.py check, ratify] Levenshtein, case-folded, each ratified pair
-  reserved_metawords: [CORRECTION, SAY-AGAIN, UNVERIFIED] # [respeak-lexicon.py check, ratify] the repair
-                      # channel, never_compress's reserved-metawords: words with no whitespace or shell
-                      # character; a ratified term nearer one than min_token_edit_distance is a problem,
-                      # a proposed one not eligible. [instruction-only] the agent passes each verbatim
-  register_marker: required # required | optional. [instruction-only] when required, a narrative keeping a
-                            # ratified term unexpanded ends its marker line ` · shorthand`;
-                            # [respeak-lexicon.py check] a value outside the two exits 2
-  readback_required_for: [irreversible-actions, security-findings, escalations-to-human] # [respeak-lexicon.py use]
-                      # slugs, checked each call; `use --for CLASS` refuses a class not listed, or a
-                      # clean use without --readback. [instruction-only] a use in an item of a listed
-                      # class is clean only with readback, its item adding ` for <class>`
-  decompress_on: [escalation-to-human, incident, repeated-fidelity-failure, new-partner] # [respeak-lexicon.py use]
-                      # only these four, checked each call; with repeated-fidelity-failure, `use` names
-                      # a term with 2 failure uses. [instruction-only] the agent expands every term in
-                      # a listed case, whatever narrative.lexicon_access says
-  proposal_dir: .claude/respeak/proposals/ # [fixed path] in the project, never the plugin
-  ratification: human # human | auto. [instruction-only]: the agent never ratifies;
-                      # [respeak-lexicon.py check, ratify] a value outside the two exits 2; ratify prints it
-  legibility_floor: 0.5 # [instruction-only] the agent proposes nothing below it;
-                        # [respeak-lexicon.py ratify] an entry below it is not eligible
-  auto: # [respeak-lexicon.py ratify] when a proposed entry is eligible; ratify writes nothing
-    uses: 5                       # clean uses in .claude/respeak/uses.jsonl
-    fidelity_failures_allowed: 0  # failure uses it may have
-    readback_evidence: true       # true: only a clean use recorded with readback counts
-  retire_after_days_unused: 180 # [respeak-lexicon.py due] a ratified entry with no clean use this long is due to retire
-  review_cadence_days: 90 # [respeak-lexicon.py due] a ratified entry unreviewed this long is due for review
-  legibility_audit: # [respeak-lexicon.py due] the lexicon's `audited:` date this old, the audit is due
-    cadence_days: 30       # days between audits
-    method: fresh-decoder  # the only method: a fresh agent decodes the sample unaided
-    sample: 10             # ratified terms put to it, chosen by the day
-  # never_compress: [instruction-only] the agent keeps each class verbatim;
-  # respeak-verify-edit.py also holds numbers across an editorial pass.
-  # reserved-metawords is the list shorthand.reserved_metawords names.
-  never_compress: # TJC do-not-use format: each ban carries its failure story
-    - { class: error-messages-and-stack-traces, failure_mode: verbatim evidence lost }
-    - { class: security-findings, failure_mode: high-stakes content must survive any reader }
-    - { class: user-quotes, failure_mode: misattribution }
-    - { class: numbers-with-units, failure_mode: bare magnitudes; TJC trailing-zero precedent }
-    - { class: safety-and-caution-instructions, failure_mode: never buried or shortened (STE) }
-    - { class: ask-owner-and-deadline, failure_mode: BLUF ask stripped in compression }
-    - { class: identifiers-novel-decisions-negations, failure_mode: high-surprisal content is where short encodings become unrecoverable (Piantadosi 2011) }
-    - { class: reserved-metawords, failure_mode: repair channel must never be repurposed }
+# project-only. The translator keeps each class verbatim in every mode, whatever a
+# length budget says; respeak-verify-edit.py also holds numbers across an editorial
+# pass. TJC do-not-use format: each ban carries its failure story.
+never_compress:
+  - { class: error-messages-and-stack-traces, failure_mode: verbatim evidence lost }
+  - { class: security-findings, failure_mode: high-stakes content must survive any reader }
+  - { class: user-quotes, failure_mode: misattribution }
+  - { class: numbers-with-units, failure_mode: bare magnitudes; TJC trailing-zero precedent }
+  - { class: safety-and-caution-instructions, failure_mode: never buried or shortened (STE) }
+  - { class: ask-owner-and-deadline, failure_mode: BLUF ask stripped in compression }
+  - { class: identifiers-novel-decisions-negations, failure_mode: high-surprisal content is where short encodings become unrecoverable (Piantadosi 2011) }
 
 scopes: [] # path-scoped overrides declared centrally, the analog of a
            # .claude/rules/*.md `paths:` frontmatter. Each entry needs `paths`
