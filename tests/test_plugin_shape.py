@@ -78,10 +78,10 @@ class Narrator(unittest.TestCase):
         # The agent's reply carries a marker and closing lines for its caller. A file holds
         # none of them, whether the script, the agent or the skill's own turn writes it. A
         # fake runner pins the script in tests/test_render.sh; these two are prose a model reads.
-        answer = read(SKILL).split("**The answer.**", 1)[1]
+        answer = " ".join(read(SKILL).split("**The answer.**", 1)[1].split())
         for word in ("marker line", "`gate:`", "`config:`", "report"):
             self.assertIn(word, answer)
-        self.assertIn("write the narrative alone there", " ".join(answer.split()))
+        self.assertIn("A file holds the narrative alone", answer)
         contract = " ".join(read(AGENT).split("## Output contract", 1)[1].split())
         self.assertIn("A file the caller asks for holds the narrative alone", contract)
         for word in ("marker line", "`gate:`", "`config:`"):
@@ -90,22 +90,31 @@ class Narrator(unittest.TestCase):
         self.assertIn("config: approximated from files (no resolved block)", " ".join(read(AGENT).split()))
         self.assertIn(r"config: approximated from files \(no resolved block\)", script)
 
-    def test_the_serial_render_fits_a_callers_max_turns(self):
+    def test_the_read_and_write_path_fits_a_callers_max_turns(self):
         # agentik-relay's `make readme` runs the skill under `--allowedTools 'Read Write'
-        # --max-turns 8`. The text's own count is what can be pinned; what a model spends
-        # needs a real run.
-        render = " ".join(read(SKILL).split("**The render.**", 1)[1].split("**The check.**", 1)[0].split())
-        self.assertIn("in seven turns", render)
-        self.assertIn("in one message", render)
-        self.assertIn("with no try at the agent", render)
-        turns = []
-        for first, last in re.findall(r"\((\d)(?:-(\d))?\) ", render):
-            turns += range(int(first), int(last or first) + 1)
-        self.assertEqual(turns, list(range(1, 8)))
+        # --max-turns 8`, where a real render had five calls denied and hit `error_max_turns`
+        # at 9 turns (r19 amendment 2). The text's own count is what can be pinned; what a
+        # model spends needs the real command.
+        page = " ".join(read(SKILL).split())
+        path = page.split("Read and Write only.**", 1)[1].split("1. **The mode.**", 1)[0]
+        self.assertIn("A contract naming a file, or a denied Bash or Agent call", page)
+        self.assertIn("Assume no Bash, no Edit and no agent", path)
+        self.assertIn("in three turns", path)
+        turns = [int(n) for n in re.findall(r"\((\d)\) ", path)]
+        self.assertEqual(turns, [1, 2, 3])
         self.assertLess(len(turns), 8)
-        for name in ("agents/respeak.md", "banned-phrases.yaml", "replacements.yaml", "style/tone-mapping.md"):
-            self.assertIn(name, render)
-            self.assertTrue(os.path.isfile(os.path.join(PLUGIN, name if name.startswith("agents") else "corpus/" + name)), name)
+        self.assertIn("in one message, Read the source, the file the contract names", path)
+        for name in ("agents/respeak.md", "config/respeak.config.yaml", "corpus/banned-phrases.yaml",
+                     "corpus/replacements.yaml", "corpus/style/tone-mapping.md"):
+            self.assertIn(name, path)
+            self.assertTrue(os.path.isfile(os.path.join(PLUGIN, name)), name)
+        for rule in ("read nothing after it", "Write the file once", "the narrative alone",
+                     "one short line", "No retry of a denied tool", "no second rewrite",
+                     "runs no measure and no verifier"):
+            self.assertIn(rule, path)
+        # the fuller path stands where Bash works, and the old count is gone
+        self.assertIn("respeak-measure.py", page.split("1. **The mode.**", 1)[1])
+        self.assertNotIn("seven turns", page)
 
     def test_nothing_ships_the_lane_that_left(self):
         words = re.compile(r"lexicon|shorthand|digest|machine lane|swarm", re.I)

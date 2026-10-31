@@ -2,6 +2,12 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
+## 0.12.2 (2026-10-31)
+
+A real render under `--allowedTools 'Read Write' --max-turns 8` ended `error_max_turns` at 9 turns: five calls denied. The seven turns 0.12.1 states assumed Bash, and they were wrong.
+
+- `/respeak:respeak` gains a Read-and-Write path, taken when a contract names a file or a Bash or Agent call is denied: the reads in one message, one Write, one short line, three turns by its text. It runs no measure and no verifier, and says so. Where Bash works, the fuller path stands.
+
 ## 0.12.1 (2026-10-31)
 
 The refuter's round on the cut.
