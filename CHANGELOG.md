@@ -2,6 +2,15 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
+## 0.12.1 (2026-10-31)
+
+The refuter's round on the cut.
+
+- A rendered file holds the narrative alone. `respeak-render.sh` strips the agent's closing `gate:` and `config:` lines as it strips the marker, and the skill and the agent say the same for a file they write; the marker, those lines and a still-failing report go in the answer.
+- `/respeak:respeak` with a contract that names a file renders in its own session in seven turns, inside a caller's `--max-turns 8`: no try at the agent, and the reads in one message.
+- `respeak-config.py` loses the unreachable `fmt_statusline` branch.
+- Back in the suites: `validate` on a config with the removed keys, and the `.mdx`, upper-case and non-Markdown cases of the check.
+
 ## 0.12.0 (2026-10-31)
 
 The machine lane, the gate hook and the lexicon tooling leave, on the owner's word of 2026-10-31. This is breaking; `0.x` may break on a minor.

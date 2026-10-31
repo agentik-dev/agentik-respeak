@@ -37,19 +37,23 @@ and negations.
    Add `--profile` when the user named an audience matching a `profiles:` entry.
 4. **The render.** Delegate to the `respeak:respeak` agent with the mode, that
    file's contents under the heading `Resolved respeak configuration`, the source,
-   any contract, and the working directory. Where the agent tool is refused, as
-   under `claude -p --allowedTools 'Read Write'`, read
-   `${CLAUDE_PLUGIN_ROOT}/agents/respeak.md` and follow it yourself.
+   any contract, and the working directory. When a contract names a file, or the
+   agent tool is refused, as under `claude -p --allowedTools 'Read Write'`, follow
+   `${CLAUDE_PLUGIN_ROOT}/agents/respeak.md` yourself, with no try at the agent, in
+   seven turns, since such a caller may set `--max-turns 8`: (1) in one message,
+   step 3 with reads of the source, that agent file and, from the plugin's `corpus/`
+   and the project's `.claude/respeak/`, `banned-phrases.yaml`, `replacements.yaml`
+   and `style/tone-mapping.md`; (2) the resolved file; (3-5) step 5 with its two
+   rewrites; (6) the Write; (7) the answer. Read nothing else.
 5. **The check.** Trust no narrative unmeasured. Feed it to the scanner on stdin:
    ```
    "${CLAUDE_PLUGIN_ROOT}/scripts/py" respeak-measure.py - --fail-on error --config "/tmp/respeak-${CLAUDE_CODE_SESSION_ID}.yaml" <<'RESPEAK_EOF'
    <the narrative, verbatim>
    RESPEAK_EOF
    ```
-   Exit 1: send the report back for a rewrite that clears every error-severity
-   hit, then check again, at most 2 rounds. Still failing: go on, with the final
-   report appended under `respeak gate: still failing after 2 rounds`, so the
-   reader sees what did not clear.
+   Exit 1: rewrite to clear every error-severity hit and check again, at most 2
+   rounds. Still failing: go on, with the final report appended under
+   `respeak gate: still failing after 2 rounds`, so the reader sees what did not clear.
 6. **The answer.** Relay the narrative verbatim, its `📣 respeak · <mode>` marker
    line first, with no commentary. When a contract names a file, write the
    narrative alone there: no marker line, no `gate:` or `config:` line, no report

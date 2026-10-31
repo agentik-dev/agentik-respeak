@@ -90,6 +90,23 @@ class Narrator(unittest.TestCase):
         self.assertIn("config: approximated from files (no resolved block)", " ".join(read(AGENT).split()))
         self.assertIn(r"config: approximated from files \(no resolved block\)", script)
 
+    def test_the_serial_render_fits_a_callers_max_turns(self):
+        # agentik-relay's `make readme` runs the skill under `--allowedTools 'Read Write'
+        # --max-turns 8`. The text's own count is what can be pinned; what a model spends
+        # needs a real run.
+        render = " ".join(read(SKILL).split("**The render.**", 1)[1].split("**The check.**", 1)[0].split())
+        self.assertIn("in seven turns", render)
+        self.assertIn("in one message", render)
+        self.assertIn("with no try at the agent", render)
+        turns = []
+        for first, last in re.findall(r"\((\d)(?:-(\d))?\) ", render):
+            turns += range(int(first), int(last or first) + 1)
+        self.assertEqual(turns, list(range(1, 8)))
+        self.assertLess(len(turns), 8)
+        for name in ("agents/respeak.md", "banned-phrases.yaml", "replacements.yaml", "style/tone-mapping.md"):
+            self.assertIn(name, render)
+            self.assertTrue(os.path.isfile(os.path.join(PLUGIN, name if name.startswith("agents") else "corpus/" + name)), name)
+
     def test_nothing_ships_the_lane_that_left(self):
         words = re.compile(r"lexicon|shorthand|digest|machine lane|swarm", re.I)
         for path in (SKILL, AGENT, os.path.join(PLUGIN, "config", "include.md.tmpl"),
