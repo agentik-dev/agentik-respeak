@@ -15,6 +15,7 @@ CHANGELOG.md: sibling                             # the plugin's name and its si
 CLAUDE.md: sibling                                # the plugin's name and its agents
 Makefile: sibling                                 # the plugin's name, the provider sibling
 NICE_TO_HAVE.md: sibling                          # the plugin's name and its config directory
+history/NICE-2026-11-01.md: sibling               # the frozen NICE, the same names
 README.md: sibling                                # the plugin's name and its install lines
 design/readme/*: sibling                          # the README's source, the same names
 plugin/agents/*: sibling                          # the agent prompts name the plugin

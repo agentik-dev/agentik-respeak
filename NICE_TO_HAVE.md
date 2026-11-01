@@ -1,41 +1,8 @@
----
-status: current
-updated: 2026-10-17
-owner: the owner
-audience: the owner, agent
----
-# claude-code-respeak: what is left open, none of it blocking
+# Nice to have
 
-`0.12.0` removed the machine lane (`design/packets/r19-cut.md`): an entry below about the lexicon, the shorthand or the gate hook has no target now. Left by r19: `respeak-measure.py --baseline` has no caller after the hook, its tests stay with it; `gate.enabled` in a repo's config still decides what `respeak-check.sh` scans.
+Findings that block nothing, one row each, in hq design/05 §2's table; `scripts/recordlint` holds it. The list before 2026-11-01 is frozen in `history/NICE-2026-11-01.md`, never edited: every item there is S4 or unlevelled, so none is open at S1 to S3 and the table below starts empty; a packet that touches an area greps the archive by path.
 
-Nothing here blocks a review or a merge. An item leaves when it lands, or when a decision retires it.
+## Open
 
-- The shorthand governance is built but for the swarm's side (2026-10-14, r2; S4), answered by r16 (2026-10-16) for three of its parts, by r17 (2026-10-16) for three more, and answered by r18 (2026-10-17) for the rest. Built: the cap of 150 ratified entries, the minimum edit distance of 2, and the auto-ratification gate (5 clean uses, 0 fidelity failures, readback evidence); expiry after 180 days unused, the 90-day review, and the 30-day fresh-decoder audit's clock and sample; then the reserved metawords and the register marker, the readback and decompress triggers, and the audit's decoding. `plugin/scripts/respeak-lexicon.py` reads `max_entries`, `min_token_edit_distance`, `reserved_metawords` and `auto` in `check` and `ratify`, `register_marker` in `check`, `readback_required_for` and `decompress_on` in `use`, the three clocks in `due`, and `legibility_audit` in `audit` too; the translator reads the marker, the metawords and the triggers, and `/respeak:audit` gives `audit` a fresh agent's readings. Left: the swarm's side of the register, since `plugin/scripts/render-lexicon-digest.sh` reads no config, so the digest names neither the marker nor the metawords; an existing `.claude/respeak/.gitattributes` without the `audits.jsonl` line is never edited, and `/respeak:init` could add it; a headless decoder, if the owner takes one over the skill's fresh agent. `research/synthesis/config-critique.md` holds the sources.
-- The include template has little room left under its cap (2026-10-14, r2; S4). With v2's done-claim rule, this repo's own config (11 `gate.include` entries and a lexicon) renders at 1,498 bytes against the 1,500-byte cap; the fixture renders at 1,309. The next rule added to `plugin/config/include.md.tmpl` takes its bytes from another sentence, or waits on a ruling about the cap.
-
-- The session layer has no freshness check (2026-10-14, the observer; S4): `session_layer` (`plugin/scripts/respeak-config.py:637-676`) accepts the resolved file on its provider major alone and applies it above `.claude/respeak/config.yaml`, its local file and the folder files, and respeak never reads its section of `.claude/agentik/config.yaml` itself, so a frozen `respeak:` section outlives a later edit for the whole sitting. Inert today: every real resolved file holds only the profile's `narrative: tech`, dropped with a warning. Fix as agentik-relay's session-layer-r1 §2: read the repo's section directly (GUIDE §3 lists the layer) and apply the session layer only while `provider.inputs` list `.claude/agentik/config.yaml` and `config.local.yaml` at their current sha256.
-- include-r1's refuter round (2026-10-11; BLOCK on B1, fixed before the merge), the notes left: N5, the import from the user-level CLAUDE.md that the owner's answer names stays a by-hand step. N8, the owner's ruling sits in no DECISIONS.md, since this repo keeps no ledger. Unchecked: whether Claude Code hides the include's HTML-comment stamp line from the model.
-- `/respeak:include`'s two rounds (2026-10-11; round one's B1 to B4 and round two's F1 fixed before the merge), the notes left: a change to the script alone makes `check` say "hand-edited" where the file is only stale. Over the cap, `check` exits 2 and prints "nothing written". A backtick inside a `gate.include` pattern breaks its code span. A separate git dir under another name inside the root (`--separate-git-dir=.gitstore`) is not refused. `CLAUDE_CONFIG_DIR` is not guarded the way ~/.claude is. A tracked config hard-linked to a user-layer file reaches the render (the index rule allows it). With its parent directory at mode 000, the tracked config is skipped with no warning, and `check` exits 0.
-- `/respeak:init` still copies the plugin's lexicon into every repo (packet n1, 2026-10-12), so it offers the `lexicon-active.md` import only when `.claude/respeak/lexicon.yaml` was there before the run. Whether `init` should seed a lexicon at all is open.
-- S4, n1 review: `include write`'s uncommitted note fires on edits the render never reads (a `hooks:` key, a comment), and stays silent on a tracked config or digest deleted from the work tree, or on a skip-worktree edit.
-- S4, n1 review: `propose` counts a symlinked `README.md` but skips a symlinked `docs/*.md`.
-- S4, n1 review: `propose --root ""` silently means the current directory.
-- S4, n1 round two: a bare `yes` or `on` in a config file is a YAML 1.1 boolean, so `validate`, the resolver and the hook all accept it for `hooks.session_start`, while `--set hooks.session_start=yes` is refused; the comment at `plugin/scripts/respeak-config.py:788` says `yes` is refused.
-- S4, n1 round two, unchecked: whether init's `Bash(git add .claude/respeak/*)` allowance also matches `git add .claude/respeak/x .`, which stages the whole tree; Claude Code's permission matcher was not run.
-- agentik-r1-respeak (2026-10-13): c10's migration is `make venv`, but this repo has no `venv` target. Until one lands or the owner builds `agentik-respeak` (3.12, PyYAML) at the switch, the Makefile runs on the old venv named on `.python-version`'s second line.
-- agentik-r1-respeak (2026-10-13): README.md and its source took the same hand edit and were stamped by `readme-fresh.sh --stamp` after the verifier passed, since `make readme` spawns `claude -p`. The next `make readme` gives the new install paragraph its editorial pass.
-- (agentik-r1 review, 2026-10-13, S4) With both plugin IDs listed, `plugin/scripts/respeak-doctor.sh` prints the new one and no warning, hiding the doubled hooks the README warns about; add `; old id also listed`.
-- (agentik-r1 review, S4) `make install` with only the old ID listed installs `respeak@agentik` and prints no hint to disable the old ID; echo the `claude plugin disable` line.
-- (agentik-r1 review, S4) `make install` on a malformed or empty plugin list exits 2 with a raw Python traceback; print one `install:` line naming the cause.
-- (agentik-r1 review, S4) The Makefile's `$(wildcard)` venv pick takes a dangling new-venv `python3` link over a working old venv; test with `-x`.
-- (agentik-research, 2026-10-14, S4) The gate's sentence splitter does not split after a footnote marker (`.[^key] Next`), so `max_sentence_words` warns on footnoted pages with counts of 56 to 79 words that are two or three sentences each. The research site's editors left the footnotes in place. Fix: treat `[^key]` after a sentence's end as part of that sentence, then split.
-- (r16, 2026-10-16, S4) `plugin/scripts/lexicon-status.sh` counts ratified terms with `grep -c 'status: ratified'`, so the seed's header comment on line 5 counts as one: the SessionStart note says 3 ratified terms where the seed holds 2, and `respeak-lexicon.py check` says 2. Fix: count the parsed entries.
-- (r18, 2026-10-17, S4) README's tests table still describes `tests/test_lexicon.py` as the cap, the edit distance, the use record and the ratification verdict, leaving out the clocks, the triggers and the audit. Fix: name them at the next `make readme`.
-- (r18, 2026-10-17, S4, unchecked) `audit`'s rule, each expansion run begins a decoding word, passes a one-character run on any word it starts: an expansion's `1` is decoded by `10`. Fix, if the owner wants it stricter: a run of one character must equal a word.
-
-## sync-vc1's build (2026-10-17): what it leaves (S4)
-
-1. `plugin-version-check` is not in `.PHONY` (Makefile line 20), so a stray root file of that name skips the check. Fix in the next packet that touches the Makefile.
-2. The hygiene failure message (Makefile line 61) and the comment at line 53 name three vendored copies, while `scripts/vendored.sha256` pins four. Fix in the same packet.
-3. The vendored doclint's `MAKE_TARGETED` list lacks `plugin-version-check`, so a later packet's acceptance line `make plugin-version-check` would hit the suite rule. Commons' to settle.
-4. From now on, any packet that edits `plugin/` lists `plugin/.claude-plugin/plugin.json` in its may-touch and bumps the version, or `make check` reads red (GUIDE §7).
+| id | level | area | finding | evidence | from |
+|---|---|---|---|---|---|
