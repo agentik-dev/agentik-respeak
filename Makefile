@@ -49,6 +49,7 @@ lint:
 doclint:
 	$(PYTHON) scripts/doclint
 	bash plugin/scripts/respeak-check.sh
+	$(PYTHON) scripts/recordlint
 
 # scripts/{agentik,hygiene,bounded} are vendored from agentik-commons by its `scripts/sync`
 # (agentik-r1 7.3), which writes their sums to scripts/vendored.sha256; a re-sync moves the
