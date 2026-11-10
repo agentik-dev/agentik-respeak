@@ -196,6 +196,17 @@ Decision needed by Friday: approve the cutover.
 rm -f "$out"; FAKE_MODE=said FAKE_RESULT="$said" bash "$RENDER" --mode bluf --source "$work/notes.txt" --out "$out" >/dev/null 2>&1; rc=$?
 check "render: a prose-led narrative with a fenced comment renders" 0 "$rc"
 [ "$(cat "$out")" = "$(printf '%s' "$said" | sed 1d)" ] && ok "...keeping every line below the marker" || bad "...keeping every line below the marker (got: $(cat "$out"))"
+# The marker counts only as the first non-blank line: one quoted mid-narrative
+# is narrative, and a preamble above a top marker costs nothing below it.
+body='The narrator opened twice in one session.
+Decision needed by Friday: keep one opening.
+📣 respeak · eli5
+and nothing followed it.'
+for k in mid pre; do
+  [ "$k" = mid ] && said2="$body" || said2="$(printf 'Here is the narrative:\n📣 respeak · bluf\n%s' "$body")"
+  rm -f "$out"; FAKE_MODE=said FAKE_RESULT="$said2" bash "$RENDER" --mode bluf --source "$work/notes.txt" --out "$out" >/dev/null 2>&1; rc=$?; got="$(cat "$out" 2>/dev/null)"
+  [ "$rc" -eq 0 ] && [ "${got%"$body"}" != "$got" ] && ok "render: a marker past the first line ($k) loses nothing of the narrative" || bad "render: a marker past the first line ($k) loses nothing of the narrative (rc $rc, got: $got)"
+done
 ln -s notes.txt "$work/notes-link.md"; ln -s . "$work/here"
 for o in "$work/notes.txt" ./notes.txt "$work/notes-link.md" "$work/here/notes.txt"; do
   : > "$FAKE_LOG"; cp "$work/notes.before" "$work/notes.txt"; err="$(cd "$work" && FAKE_MODE=said FAKE_RESULT="$said" bash "$RENDER" --mode bluf --source "$work/notes.txt" --out "$o" 2>&1 >/dev/null)"; rc=$?
