@@ -184,6 +184,25 @@ The cache is warm.
 '
 rm -f "$out"; FAKE_MODE=said FAKE_RESULT="$said" bash "$RENDER" --mode technical --source "$src" --out "$out" >/dev/null 2>&1
 check_out "render: such a line inside the narrative stays" 'gate: 1 banned term removed from source' "$(cat "$out")"
+# --- a narrative keeps its lead; an --out that is the source is refused ------
+printf 'cutover notes: 3 of 3 checks pass; approve by Friday\n' | tee "$work/notes.txt" > "$work/notes.before"
+said='📣 respeak · bluf
+The cutover is ready: 3 of 3 checks pass.
+Decision needed by Friday: approve the cutover.
+```sh
+# verify before approving
+```
+'
+rm -f "$out"; FAKE_MODE=said FAKE_RESULT="$said" bash "$RENDER" --mode bluf --source "$work/notes.txt" --out "$out" >/dev/null 2>&1; rc=$?
+check "render: a prose-led narrative with a fenced comment renders" 0 "$rc"
+[ "$(cat "$out")" = "$(printf '%s' "$said" | sed 1d)" ] && ok "...keeping every line below the marker" || bad "...keeping every line below the marker (got: $(cat "$out"))"
+ln -s notes.txt "$work/notes-link.md"; ln -s . "$work/here"
+for o in "$work/notes.txt" ./notes.txt "$work/notes-link.md" "$work/here/notes.txt"; do
+  : > "$FAKE_LOG"; cp "$work/notes.before" "$work/notes.txt"; err="$(cd "$work" && FAKE_MODE=said FAKE_RESULT="$said" bash "$RENDER" --mode bluf --source "$work/notes.txt" --out "$o" 2>&1 >/dev/null)"; rc=$?
+  check "render: --out $o, the source, refuses (exit 2)" 2 "$rc"
+  [ "$(printf '%s\n' "$err" | grep -c .)" -eq 1 ] && cmp -s "$work/notes.txt" "$work/notes.before" && ok "...in one stderr line, the source byte-identical" || bad "...in one stderr line, the source byte-identical (stderr: $err)"
+  no_runner "...before any runner starts"
+done
 
 # --- ADV10-3: an account failure is exit 4, and nothing reaches --out -------
 rm -f "$out"
