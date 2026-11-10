@@ -26,10 +26,11 @@
 #   2. Runs the runner non-interactively, piping a prompt (mode + resolved
 #      config + optional contract notes + the source material) on stdin.
 #   3. Extracts the `.result` string from the runner's --output-format json
-#      output, strips any preamble before the first real content line (a
-#      leading `---` front-matter fence or a `#` heading) — belt-and-suspenders
+#      output; when the marker is not its first non-blank line and the source
+#      is led by `---` or `#`, strips any preamble above the first such line — belt-and-suspenders
 #      against a chatty preamble the agent's own output contract forbids but
-#      a model might still emit — then the marker line above and the
+#      a model might still emit — then a marker line on top (a marker-led
+#      line anywhere else is narrative and stays) and the
 #      agent's closing `gate:` and `config:` lines below the narrative, and
 #      writes it to --out. The output ends
 #      in exactly one newline when the source ends in one, and in none when
@@ -51,6 +52,7 @@
 #   1-minute load over RESPEAK_LOAD_MAX (default 4 x the core count; from
 #                               `sysctl -n vm.loadavg`, else /proc/loadavg)
 #   --max-rounds not 1 to 5
+#   --out the source itself, by any path (a symlink, a relative path)
 # The runner gets `--tools Read Grep Glob` (a restriction, where
 # --allowedTools only pre-approves) and `--max-turns RESPEAK_RENDER_MAX_TURNS`
 # (default 8), and runs under respeak-deadline.sh for RESPEAK_RENDER_WALL
@@ -139,6 +141,8 @@ command -v "$RENDER_CMD" >/dev/null 2>&1 || {
 }
 
 [ -f "$SOURCE" ] || { echo "respeak-render: source not found: $SOURCE" >&2; exit 2; }
+"$RESPEAK_PY" -c 'import os, sys; sys.exit(not os.path.exists(sys.argv[2]) or not os.path.samefile(*sys.argv[1:]))' \
+  "$SOURCE" "$OUT" && refuse "--out is the source, $OUT; name another file"
 
 AGENT_MD="$PLUGIN_ROOT/agents/respeak.md"
 [ -f "$AGENT_MD" ] || { echo "respeak-render: agent spec not found: $AGENT_MD" >&2; exit 2; }
@@ -268,12 +272,13 @@ if data is None:
 if not result.strip():
     sys.stderr.write("respeak-render: no non-empty string .result in the runner output\n")
     sys.exit(2)
-m = re.search(r"^(?:---|#)", result, re.M)
-if m:
+marker = re.match(r"\s*\U0001F4E3[^\n]*\n+", result)
+m = None if marker else re.search(r"^(?:---|#)", result, re.M)
+if m and re.match(r"\s*(?:---|#)", open(source, errors="replace").read()):
     result = result[m.start():]
 # The agent opens with an activation marker for interactive readers; a
 # rendered file does not want it, nor the closing lines it writes for its caller.
-result = re.sub(r"\A\s*\U0001F4E3[^\n]*\n+", "", result)
+result = result[marker.end():] if marker else result
 closing = re.compile(r"\n+(?:gate: \d+ banned terms? removed from source"
                      r"|config: approximated from files \(no resolved block\))\s*\Z")
 while closing.search(result):

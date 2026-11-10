@@ -2,6 +2,11 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
+## 0.12.5 (2026-11-10)
+
+- `respeak-render.sh` keeps a narrative's lead. It cuts above the marker line, or, with no marker, above the first `---` or `#` line only when the source opens with one. Before, a prose lead above a fenced `# comment` was cut at exit 0.
+- `respeak-render.sh` refuses an `--out` that is the source, by any path, with exit 2 before a runner starts. Before, it overwrote the source.
+
 ## 0.12.3 (2026-10-31)
 
 The installed 0.11.0 passed the same command, rc 0, `num_turns` 19, with five Bash denials absorbed: the Agent tool is not refused under `--allowedTools 'Read Write'`, and a subagent's turns do not count against `--max-turns 8`. The rule of 0.12.1 and 0.12.2, that a contract naming a file works inline, was the regression, and both turn counts rested on it.
