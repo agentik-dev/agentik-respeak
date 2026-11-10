@@ -2,7 +2,7 @@
   "name": "respeak",
   "displayName": "Respeak",
   "description": "A narrator for agent work: a translator agent and one skill render a human-facing narrative in ELI5, BLUF or technical mode, tuned by a layered tone configuration: plugin defaults, user (~/.claude/respeak), project (.claude/respeak), and per-folder .respeak.yaml files, nearest wins. Error messages, security findings, user quotes and numbers with units are never compressed. Ships no hooks.",
-  "version": "0.12.4",
+  "version": "0.12.5",
   "license": "MIT",
   "author": {"name": "Kevin Tegtmeier"},
   "homepage": "https://github.com/agentik-dev/agentik-respeak",

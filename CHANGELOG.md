@@ -2,7 +2,7 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
-## 0.12.4 (2026-11-10)
+## 0.12.5 (2026-11-10)
 
 - `respeak-render.sh` keeps a narrative's lead. It cuts above the marker line, or, with no marker, above the first `---` or `#` line only when the source opens with one. Before, a prose lead above a fenced `# comment` was cut at exit 0.
 - `respeak-render.sh` refuses an `--out` that is the source, by any path, with exit 2 before a runner starts. Before, it overwrote the source.
