@@ -115,7 +115,7 @@ A confident wrong BLUF is worse than the raw transcript. `never_compress` and th
 
 ## Status
 
-Status: version `0.12.6`, rendered `2026-10-31`, `280` unittest cases and `6` bash suites.
+Status: version `0.12.6`, rendered `2026-10-31`, `284` unittest cases and `6` bash suites.
 
 | Surface | State |
 |---|---|

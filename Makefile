@@ -17,7 +17,7 @@ export PATH := $(patsubst %/,%,$(dir $(PYTHON))):$(PATH)
 # The claude CLI `install` and `validate` run; the install suite passes a fake here.
 CLAUDE ?= claude
 
-.PHONY: check check-unlocked test lint doclint hygiene readme readme-fresh validate doctor install
+.PHONY: check check-unlocked test lint doclint hygiene descriptions readme readme-fresh validate doctor install
 
 # check runs under scripts/bounded, vendored from agentik-commons (conventions section 5,
 # its sum in scripts/vendored.sha256): one per tree by the lock .check.lock, an 840 s wall, held off above load 4 x cores.
@@ -30,7 +30,7 @@ CLAUDE ?= claude
 check:
 	$(PYTHON) scripts/bounded --lock .check.lock --wall 840 --load 4 -- $(MAKE) check-unlocked
 
-check-unlocked: test lint doclint hygiene plugin-version-check readme-fresh validate
+check-unlocked: test lint doclint hygiene plugin-version-check descriptions readme-fresh validate
 
 # Every spawn here is bounded: respeak-deadline.sh runs it in its own process group and kills
 # the group at the wall clock (exit 124), so a hung suite or a slow claude fails the target.
@@ -66,6 +66,11 @@ hygiene:
 ## plugin-version-check: red when a file under plugin/ changed after the commit that last moved plugin.json's version (conventions section 7); exits 0, 1, 2
 plugin-version-check:
 	$(PYTHON) scripts/plugin-version-check
+
+## descriptions: the plugin's loaded description bytes (hq design/09 §2, packet p1-description-gate), one line each
+## and the sum; red over 1,024 B. scripts/plugin-description-bytes is vendored from agentik-commons with the others.
+descriptions:
+	$(PYTHON) scripts/plugin-description-bytes plugin
 
 # README.md is rendered from design/readme/source.md (conventions section 6); edit the source.
 # The render is an editorial pass, not a summary: design/readme/contract.txt is its contract, and
