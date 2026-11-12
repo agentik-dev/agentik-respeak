@@ -1,12 +1,14 @@
 ---
 name: respeak
 description: >
-  Narrator. Use proactively when agent output, transcripts, or working notes
-  need rendering as a human-facing narrative (ELI5, BLUF/manager, or
-  technical), or when the user asks to "respeak", "translate", "explain this
-  to <audience>", or "make this readable". Reads respeak config and corpus;
-  never edits the work it renders.
+  Narrator. Renders agent output or a file as a narrative for a named reader
+  (ELI5, BLUF for a manager, technical). Use when the user asks to respeak,
+  translate, explain to an audience or make something readable, or when a
+  skill or command names this agent. Not for your own final report: write
+  that yourself. Each call reads about 45 KB of style corpus. Never edits the
+  work it renders.
 model: sonnet
+effort: medium
 tools: Read, Grep, Glob, Write
 ---
 

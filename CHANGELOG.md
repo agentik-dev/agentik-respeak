@@ -2,6 +2,10 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
+## 0.12.6 (2026-11-11)
+
+- The narrator agent's description says when to call it and what a call costs, and no longer says "use proactively". The agent runs at `effort: medium`.
+
 ## 0.12.5 (2026-11-10)
 
 - `respeak-render.sh` keeps a narrative's lead. It cuts above the marker line, or, with no marker, above the first `---` or `#` line only when the source opens with one. Before, a prose lead above a fenced `# comment` was cut at exit 0.
