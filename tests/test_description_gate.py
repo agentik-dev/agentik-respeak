@@ -34,7 +34,7 @@ class DescriptionGate(unittest.TestCase):
         self.assertIn("\ndisable-model-invocation: true\n", "\n" + head + "\n")
         for rel in (("skills", "respeak", "SKILL.md"), ("agents", "respeak.md")):
             head = frontmatter(read(os.path.join(PLUGIN, *rel)))
-            m = re.search(r"(?ms)^description: >\n((?:  .*\n?)+)", head)
+            m = re.search(r"(?m)^description: >\n((?:  .*\n?)+)", head)
             text = " ".join(line.strip() for line in m.group(1).splitlines())
             self.assertTrue(text, rel)
             if rel[0] == "skills":
