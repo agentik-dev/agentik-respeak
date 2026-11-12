@@ -11,8 +11,9 @@ engineer. `.claude/respeak/config.yaml` lists them in `gate.include`;
 `respeak-config.sh explain --for <file>` shows the register. This file,
 skills, agent prompts, packets and sittings are read by a model, not gated.
 
-**Editing a human-lane file.** Do not hand-edit prose in those files. Ask the
-`respeak:respeak` agent for its technical-mode editorial pass over the file,
+**Editing a human-lane file.** Do not hand-edit prose in those files: the
+gate checks their register. Ask the `respeak:respeak` agent (each call reads
+about 45 KB of corpus) for its technical-mode editorial pass over the file,
 written to a scratch path, then prove the edit changed only prose:
 
 ```sh
@@ -31,15 +32,11 @@ mode, proves the render prose-only with `respeak-verify-edit.py`, and stamps
 both files in `design/readme/rendered.sha256`. Edit the source, then run
 `make readme`. `make check` refuses a README whose stamp no longer matches.
 Links in the source are `/`-rooted, so one target resolves from the source
-and from the root. The source stays at or under 24,576 bytes;
-`scripts/readme-fresh.sh` enforces the ceiling.
+and from the root. `scripts/readme-fresh.sh` holds the source's size ceiling.
 
 **The check.** `make doclint` runs `respeak-check.sh`, which scans the human-lane files from the committed config. No hook runs it: this plugin ships none, and `examples/layered/project/` is gated by that fixture's own config.
 
 **Before committing.** Run `bash plugin/scripts/respeak-check.sh` (every doc passes
 its own gate) and `make check`. Use `python3` for anything Python: in this
 repo it is the pyenv virtualenv `.python-version` declares,
-`agentik-respeak` (3.12, with PyYAML); until the switch builds it, the
-Makefile takes the venv on the file's second line, its name before agentik-r1.
-
-**The machine lane left in 0.12.0** (`design/packets/r19-cut.md`): no lexicon, no shorthand, no digest import. The code is in git history. Past packets, sittings and `research/` keep their words.
+`agentik-respeak` (3.12, with PyYAML).
