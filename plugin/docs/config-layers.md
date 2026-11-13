@@ -403,6 +403,7 @@ folder's tone applies and `--mode` sits on top of it.
 | --- | --- |
 | `respeak-config.sh explain [--for PATH]` | the layer stack (present and absent), which rule chose the project root, the effective narrative and gate, warnings, then every override with the layer that set it, and a final `session overrides:` line |
 | `respeak-config.sh explain --brief [--for PATH]` | the same in a few lines: project, layers applied, effective narrative, gate, override count, warnings. The `/respeak:respeak` skill injects this at the top of every invocation |
+| `agentik-respeak describe config --json [KEY]` | each setting as one JSON object: its value, its default, and the layer, file and line that set it; the suite's `agentik config` reads it |
 | `respeak-config.sh resolve --for PATH --format yaml\|json [--out FILE]` | the full effective config, for `respeak-measure.py --config` or for a prompt; `--out` writes it without a shell redirect, which a skill's `allowed-tools` rule would not cover |
 | `respeak-config.sh resolve --for PATH --format line` | a one-line summary |
 | `respeak-config.sh gate --for FILE [--write-config PATH]` | the gate decision as JSON (`applies`, `fail_on`, `reason`), optionally writing the resolved YAML |

@@ -2,6 +2,15 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
+## 0.13.2 (2026-11-13)
+
+- `agentik-respeak`, in the plugin's `bin/`, answers the agentik suite's reads: `describe --json`, `doctor --json` and `describe config --json [KEY]`.
+- The config read lists each setting with its value, its default, and the layer, file and line that set it.
+- `config <verb>` and `doctor` run `respeak-config.sh` and `respeak-doctor.sh` unchanged.
+- Every verb keeps Python's bytecode and the interpreter cache under `${XDG_CACHE_HOME:-~/.cache}/agentik/`, under Apple's `/usr/bin/python3` too.
+- A file key spelt with a dot, such as `tone.formality:` under `narrative:`, sets nothing. The config read warns it `unknown` at its line; write the key nested.
+- Seven settings' summaries in the config read say what the value means, such as `style.person` and `data.table_over_prose_threshold`.
+
 ## 0.12.6 (2026-11-11)
 
 - The narrator agent's description says when to call it and what a call costs, and no longer says "use proactively". The agent runs at `effort: medium`.

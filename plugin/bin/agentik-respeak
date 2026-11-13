@@ -1,0 +1,95 @@
+#!/bin/bash
+# agentik-respeak: respeak's command, the way the agentik suite asks the tool (packet ak9-plug-respeak).
+#
+#   describe --json                  what the tool is, its needs, verbs and reads (JSON)
+#   describe config --json [KEY]     every setting, its value and the file and line that set it (JSON)
+#   doctor [--json]                  scripts/respeak-doctor.sh, its lines or one JSON object
+#   config <verb> ...                scripts/respeak-config.sh with the words after `config`
+#   --version | --help | -h
+#
+# Found from its own resolved path; exports CLAUDE_PLUGIN_ROOT as this plugin when unset. Every
+# verb keeps the interpreter probe's cache and Python's bytecode under
+# ${XDG_CACHE_HOME:-~/.cache}/agentik/, the one folder a suite read may write: PYTHONPYCACHEPREFIX
+# is exported before any Python starts, the probe's own included, since Apple's /usr/bin/python3
+# otherwise writes its bytecode under ~/Library/Caches. bash 3.2.
+set -u
+
+self="$0"
+while [ -L "$self" ]; do
+  link="$(readlink "$self")"
+  case "$link" in
+    /*) self="$link" ;;
+    *) self="$(dirname "$self")/$link" ;;
+  esac
+done
+root="$(cd "$(dirname "$self")/.." && pwd -P)"
+scripts="$root/scripts"
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  CLAUDE_PLUGIN_ROOT="$root"
+  export CLAUDE_PLUGIN_ROOT
+fi
+cache="${XDG_CACHE_HOME:-${HOME:-}/.cache}/agentik"
+PYTHONPYCACHEPREFIX="$cache/pycache"
+export PYTHONPYCACHEPREFIX
+if [ -z "${RESPEAK_CACHE_DIR:-}" ]; then
+  RESPEAK_CACHE_DIR="$cache/respeak"
+  export RESPEAK_CACHE_DIR
+fi
+
+usage() {
+  echo "usage: agentik-respeak describe --json | describe config --json [KEY] | doctor [--json]" >&2
+  echo "       agentik-respeak config <explain|resolve|gate|validate> ... | --version | --help" >&2
+  exit 2
+}
+
+help() {
+  cat <<'EOF'
+agentik-respeak: respeak's command for the agentik suite.
+
+  describe --json                 Print what the tool is, what it needs and what it reads, as JSON.
+  describe config --json [KEY]    Print each setting, its value and the file and line that set it.
+  doctor                          Check the tool and what it needs.
+  doctor --json                   The same checks, as JSON.
+  config <explain|resolve|gate|validate> ...
+                                  Explain, resolve, gate or validate the layered configuration.
+  --version                       Print the name and the plugin's version.
+  --help, -h                      Print this help.
+EOF
+  exit 0
+}
+
+# plug <words>: respeak-plug.py under the probe's interpreter, its cache and bytecode under agentik/.
+plug() {
+  . "$scripts/respeak-python.sh"
+  py="${RESPEAK_PY:-${RESPEAK_PY_STD:-}}"
+  if [ -z "$py" ]; then
+    case "$1" in
+      doctor) schema="agentik.doctor/1" ;;
+      *) if [ "${2:-}" = config ]; then schema="agentik.config/1"; else schema="agentik.describe/1"; fi ;;
+    esac
+    printf '{"schema": "%s", "ok": false, "tool": "respeak", "error": {"code": "missing_need", "message": "no python3 found on PATH", "remedy": null}}\n' "$schema"
+    exit 2
+  fi
+  exec "$py" -X pycache_prefix="$cache/pycache" "$scripts/respeak-plug.py" "$@"
+}
+
+[ $# -gt 0 ] || usage
+case "$1" in
+  describe) plug "$@" ;;
+  doctor)
+    if [ $# -eq 1 ]; then
+      exec bash "$scripts/respeak-doctor.sh"
+    elif [ $# -eq 2 ] && [ "$2" = "--json" ]; then
+      plug "$@"
+    fi
+    usage ;;
+  config)
+    shift
+    exec bash "$scripts/respeak-config.sh" "$@" ;;
+  --version)
+    [ $# -eq 1 ] || usage
+    version="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json" | head -n 1)"
+    echo "agentik-respeak ${version:-unknown}" ;;
+  --help|-h) help ;;
+  *) usage ;;
+esac
