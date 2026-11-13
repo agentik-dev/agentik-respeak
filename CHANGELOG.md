@@ -2,7 +2,7 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
-## 0.13.0 (2026-11-13)
+## 0.13.1 (2026-11-13)
 
 - `agentik-respeak`, in the plugin's `bin/`, answers the agentik suite's reads: `describe --json`, `doctor --json` and `describe config --json [KEY]`.
 - The config read lists each setting with its value, its default, and the layer, file and line that set it.
