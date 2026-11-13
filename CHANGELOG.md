@@ -2,6 +2,12 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
+## 0.13.0 (2026-11-13)
+
+- `agentik-respeak`, in the plugin's `bin/`, answers the agentik suite's reads: `describe --json`, `doctor --json` and `describe config --json [KEY]`.
+- The config read lists each setting with its value, its default, and the layer, file and line that set it.
+- `config <verb>` and `doctor` run `respeak-config.sh` and `respeak-doctor.sh` unchanged.
+
 ## 0.12.6 (2026-11-11)
 
 - The narrator agent's description says when to call it and what a call costs, and no longer says "use proactively". The agent runs at `effort: medium`.

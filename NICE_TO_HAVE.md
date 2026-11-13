@@ -6,3 +6,4 @@ Findings that block nothing, one row each, in hq design/05 §2's table; `scripts
 
 | id | level | area | finding | evidence | from |
 |---|---|---|---|---|---|
+| n1 | S3 | `plugin/scripts/respeak-plug.py` | A setting set by a `scopes:` entry gets a `change.block` for the file's top level, where the scope still wins; the note names the entry | a project `scopes[0]` setting `narrative.profile: exec` for `docs/**`, read from `docs/`: the block is `narrative:\n  default_mode: bluf` | ak9-plug-respeak |
