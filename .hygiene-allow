@@ -19,6 +19,7 @@ history/NICE-2026-11-01.md: sibling               # the frozen NICE, the same na
 README.md: sibling                                # the plugin's name and its install lines
 design/readme/*: sibling                          # the README's source, the same names
 plugin/agents/*: sibling                          # the agent prompts name the plugin
+plugin/bin/*: sibling                             # the launcher, agentik-respeak, is named for the plugin
 assets/*: sibling                                 # the icon's file name
 plugin/config/*: sibling                          # the plugin's defaults name it
 plugin/corpus/*: sibling                          # the corpus names the plugin

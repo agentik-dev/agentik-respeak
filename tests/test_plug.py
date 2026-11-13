@@ -440,7 +440,8 @@ class Writes(Case):
             for dirpath, dirs, files in os.walk(top):
                 if dirpath == keep or dirpath.startswith(keep + os.sep):
                     continue
-                out[dirpath] = None
+                if dirpath != self.box.cache:   # the parent of agentik/, made to hold it
+                    out[dirpath] = None
                 for name in files:
                     path = os.path.join(dirpath, name)
                     with open(path, "rb") as f:
@@ -452,6 +453,8 @@ class Writes(Case):
         for dirpath, _, files in os.walk(os.path.join(PLUGIN, "scripts")):
             out.update(os.path.join(dirpath, f) for f in files if f.endswith((".pyc", ".pyo")))
         return out
+
+    maxDiff = None
 
     def test_nothing_written(self):
         self.box.write(self.box.user_file, "narrative:\n  tech_level: 2\ngate:\n  enabled: true\n")
