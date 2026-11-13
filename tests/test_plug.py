@@ -319,6 +319,73 @@ class Config(Case):
                       obj["layers"])
 
 
+class Dotted(Case):
+    """R1-F2: a file key spelt with a dot is unknown: no second setting, the real one sourced where
+    its value comes from, and one `unknown` warning at the dotted key's own line."""
+
+    COUNT = 117
+
+    def dotted(self, files, key, value, source, warning):
+        for name, text in files.items():
+            self.box.write(self.box.user_file if name == "user" else self.box.project_file, text)
+        obj = self.config()
+        self.held(obj)
+        keys = [s["key"] for s in obj["settings"]]
+        self.assertEqual(len(keys), len(set(keys)))
+        self.assertEqual(len(keys), self.COUNT)
+        s = self.setting(obj, key)
+        self.assertEqual(s["value"], value)
+        last = s["values"][-1]
+        self.assertEqual(s["source"], source)
+        self.assertEqual((last["layer"], last["path"], last["line"]),
+                         (source["layer"], source["path"], source["line"]))
+        self.assertEqual(self.config(key)["settings"], [s])
+        self.assertEqual([(w["key"], w["reason"], w["path"], w["line"]) for w in obj["warnings"]], [warning])
+
+    def default(self, key):
+        p = subprocess.run(["grep", "-n", "^ *%s:" % key.rsplit(".", 1)[-1], SHIPPED], capture_output=True)
+        line = int(p.stdout.decode().split(":", 1)[0])
+        return {"layer": "default", "path": SHIPPED, "line": line}
+
+    def test_the_reviews_nested_dotted_key(self):
+        self.dotted({"user": "narrative:\n  tone.formality: 0.2\n"}, "narrative.tone.formality", 0.4,
+                    self.default("narrative.tone.formality"),
+                    ("narrative.tone.formality", "unknown", self.box.user_file, 2))
+
+    def test_a_top_level_dotted_key(self):
+        self.dotted({"user": '"narrative.tech_level": 4\n'}, "narrative.tech_level", 3,
+                    self.default("narrative.tech_level"),
+                    ("narrative.tech_level", "unknown", self.box.user_file, 1))
+
+    def test_a_key_with_two_dots(self):
+        self.dotted({"user": "# tone\nnarrative.tone.formality: 0.2\n"}, "narrative.tone.formality", 0.4,
+                    self.default("narrative.tone.formality"),
+                    ("narrative.tone.formality", "unknown", self.box.user_file, 2))
+
+    def test_a_trailing_dot(self):
+        self.dotted({"user": "narrative:\n  tech_level.: 4\n"}, "narrative.tech_level", 3,
+                    self.default("narrative.tech_level"),
+                    ("narrative.tech_level.", "unknown", self.box.user_file, 2))
+
+    def test_a_leading_dot(self):
+        self.dotted({"user": "narrative:\n  .tech_level: 4\n"}, "narrative.tech_level", 3,
+                    self.default("narrative.tech_level"),
+                    ("narrative..tech_level", "unknown", self.box.user_file, 2))
+
+    def test_dotted_beside_the_real_nested_key(self):
+        user = {"layer": "user", "path": self.box.user_file, "line": 3}
+        self.dotted({"user": "narrative:\n  tone:\n    formality: 0.3\n  tone.formality: 0.2\n"},
+                    "narrative.tone.formality", 0.3, user,
+                    ("narrative.tone.formality", "unknown", self.box.user_file, 4))
+
+    def test_dotted_above_the_real_nested_key(self):
+        user = {"layer": "user", "path": self.box.user_file, "line": 3}
+        self.dotted({"user": "narrative:\n  tone:\n    formality: 0.3\n",
+                     "project": "narrative:\n  tone.formality: 0.2\n"},
+                    "narrative.tone.formality", 0.3, user,
+                    ("narrative.tone.formality", "unknown", self.box.project_file, 2))
+
+
 class InProcess(Case):
     """A8: every setting's value is resolve's leaf, for the fixtures of A2 to A6."""
 

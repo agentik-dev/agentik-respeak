@@ -296,7 +296,11 @@ class Lines:
 
 
 def leaves(d, prefix=""):
+    """Each leaf's dotted key. A file key spelt with a dot is no setting: the resolver merges it as
+    one literal key, so it would read as a second row of the real key; `walk` warns it instead."""
     for k, v in d.items():
+        if "." in str(k):
+            continue
         key = "%s.%s" % (prefix, k) if prefix else str(k)
         if isinstance(v, dict) and v:
             for item in leaves(v, key):
@@ -390,7 +394,16 @@ class Reader:
         return low + session + [r for r in high if r["name"] != "session"]
 
     # -- one setting ----------------------------------------------------------
-    def source(self, key):
+    def source(self, key, rows=()):
+        """The origin's layer, file and line; the last of `rows` (the key's values) when the origin
+        names a layer with no row, as a dotted file key records its origin in the real key's slot."""
+        src = self.origin(key)
+        if rows and not any((r["layer"], r["path"]) == (src["layer"], src["path"]) for r in rows):
+            last = rows[-1]
+            src = {"layer": last["layer"], "path": last["path"], "line": last["line"]}
+        return src
+
+    def origin(self, key):
         label = self.res.origins.get(key)
         if label is None:
             plugin = self.res.layers[0]
@@ -455,10 +468,11 @@ class Reader:
             choices = CHOICES.get(key)
             if key == "gate.fail_on":
                 choices = list(rc.FAIL_ON_VALUES)
-            source = self.source(key)
+            rows = self.values(key)
+            source = self.source(key, rows)
             out.append({"key": key, "value": value, "default": default, "type": kind, "choices": choices,
                         "summary": text, "source": source, "change": self.change(key, raw, source),
-                        "live": True, "values": self.values(key)})
+                        "live": True, "values": rows})
         return out
 
     # -- warnings ---------------------------------------------------------------
@@ -474,27 +488,29 @@ class Reader:
                 rows.append({"key": None, "reason": "unreadable", "value": None, "path": lay.path,
                              "line": self.lines.errors.get(lay.path)})
                 continue
-            self.walk(rows, lay, lay.data, lay.kind, None, "", True)
+            self.walk(rows, lay, lay.data, lay.kind, None, (), True)
         return rows
 
     def walk(self, rows, lay, data, kind, scope, prefix, top):
+        """Warning rows for one file's mapping; `prefix` is the tuple of keys above it."""
         if not isinstance(data, dict):
             return
         for k, v in data.items():
-            key = "%s.%s" % (prefix, k) if prefix else str(k)
+            segs = prefix + (str(k),)
+            key = ".".join(segs)
             reason = None
             if top and k == "scopes" and scope is None:
                 for i, entry in enumerate(v if isinstance(v, list) else []):
                     if isinstance(entry, dict):
                         overlay = {a: b for a, b in entry.items() if a not in ("paths", "scopes")}
-                        self.walk(rows, lay, overlay, "scope", i, "", True)
+                        self.walk(rows, lay, overlay, "scope", i, (), True)
                 continue
-            if top and k not in self.rc.KNOWN_TOP_KEYS:
+            if "." in str(k) or (top and k not in self.rc.KNOWN_TOP_KEYS):
                 reason = "unknown"
             elif key in ("version", "schema"):
                 reason = None if self.rc.key_allowed(key, kind) else "ignored"
             elif isinstance(v, dict) and v:
-                self.walk(rows, lay, v, kind, scope, key, False)
+                self.walk(rows, lay, v, kind, scope, segs, False)
                 continue
             elif summary_for(key) is None:
                 reason = None if isinstance(v, dict) and known_prefix(key) else "unknown"
@@ -502,7 +518,7 @@ class Reader:
                 reason = "ignored"
             if reason:
                 rows.append({"key": key, "reason": reason, "value": None, "path": lay.path,
-                             "line": self.lines.line(lay.path, key.split("."), scope, self.prefix(lay))})
+                             "line": self.lines.line(lay.path, segs, scope, self.prefix(lay))})
 
 
 def config_read(key=None):
