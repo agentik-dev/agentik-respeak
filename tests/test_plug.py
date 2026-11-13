@@ -472,5 +472,66 @@ class Writes(Case):
         self.assertEqual(self.bytecode(), pyc)
 
 
+VERBS = (["describe", "--json"], ["describe", "config", "--json"],
+         ["describe", "config", "--json", "narrative.tech_level"], ["doctor", "--json"],
+         ["config", "explain"], ["doctor"], ["--version"], ["--help"])
+
+
+class WritesUnpinned(unittest.TestCase):
+    """R1-F1: with RESPEAK_PYTHON unset, each verb in a new temp HOME and a temp cache root writes
+    nothing outside $XDG_CACHE_HOME/agentik/, under Apple's /usr/bin/python3 and under a newer one."""
+
+    maxDiff = None
+
+    def created(self, words, first=None):
+        root = os.path.realpath(tempfile.mkdtemp(prefix="respeak-unpinned-"))
+        self.addCleanup(shutil.rmtree, root, True)
+        home, cache, proj, bin_ = (os.path.join(root, d) for d in ("home", "cache", "proj", "bin"))
+        for d in (home, cache, proj, bin_):
+            os.makedirs(d)
+        with open(os.path.join(bin_, "claude"), "w") as f:
+            f.write(STUB % KNOWN_MARKET)
+        os.chmod(os.path.join(bin_, "claude"), 0o755)
+        path = ":".join(([first] if first else []) + [bin_, "/usr/bin", "/bin"])
+        env = {"HOME": home, "PATH": path, "TERM": "dumb", "XDG_CACHE_HOME": cache,
+               "XDG_CONFIG_HOME": os.path.join(home, ".config"),
+               "XDG_STATE_HOME": os.path.join(home, ".local", "state"),
+               "XDG_DATA_HOME": os.path.join(home, ".local", "share")}
+        p = subprocess.run([LAUNCHER] + words, cwd=proj, env=env, stdin=subprocess.DEVNULL,
+                           capture_output=True, timeout=60)
+        self.assertIn(p.returncode, (0, 1, 2), (words, p.stderr))
+        if "--json" in words:
+            self.assertIn("schema", json.loads(p.stdout.decode("utf-8")), words)
+        keep = os.path.join(cache, "agentik")
+        out = []
+        for top in (home, cache, proj):
+            for dirpath, _, files in os.walk(top):
+                if dirpath == keep or dirpath.startswith(keep + os.sep):
+                    continue
+                out.extend(os.path.relpath(os.path.join(dirpath, f), root) for f in files)
+        return sorted(out)
+
+    def each_verb(self, first=None):
+        for words in VERBS:
+            with self.subTest(words=" ".join(words)):
+                self.assertEqual(self.created(list(words), first), [])
+
+    @unittest.skipUnless(os.path.isfile("/usr/bin/python3"), "no /usr/bin/python3")
+    def test_system_python(self):
+        p = subprocess.run(["/usr/bin/python3", "-B", "-c", "import sys; print(sys.version_info >= (3, 8))"],
+                           capture_output=True, timeout=30)
+        if p.stdout.strip() != b"True":
+            self.skipTest("/usr/bin/python3 is older than 3.8")
+        self.each_verb()
+
+    def test_newer_python(self):
+        d = tempfile.mkdtemp(prefix="respeak-py-")
+        self.addCleanup(shutil.rmtree, d, True)
+        with open(os.path.join(d, "python3"), "w") as f:
+            f.write('#!/bin/sh\nexec "%s" "$@"\n' % PY)
+        os.chmod(os.path.join(d, "python3"), 0o755)
+        self.each_verb(first=d)
+
+
 if __name__ == "__main__":
     unittest.main()

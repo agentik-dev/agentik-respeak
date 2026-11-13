@@ -7,9 +7,11 @@
 #   config <verb> ...                scripts/respeak-config.sh with the words after `config`
 #   --version | --help | -h
 #
-# Found from its own resolved path; exports CLAUDE_PLUGIN_ROOT as this plugin when unset. The
-# three JSON reads keep the interpreter probe's cache and Python's bytecode under
-# ${XDG_CACHE_HOME:-~/.cache}/agentik/, the one folder a suite read may write. bash 3.2.
+# Found from its own resolved path; exports CLAUDE_PLUGIN_ROOT as this plugin when unset. Every
+# verb keeps the interpreter probe's cache and Python's bytecode under
+# ${XDG_CACHE_HOME:-~/.cache}/agentik/, the one folder a suite read may write: PYTHONPYCACHEPREFIX
+# is exported before any Python starts, the probe's own included, since Apple's /usr/bin/python3
+# otherwise writes its bytecode under ~/Library/Caches. bash 3.2.
 set -u
 
 self="$0"
@@ -25,6 +27,13 @@ scripts="$root/scripts"
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
   CLAUDE_PLUGIN_ROOT="$root"
   export CLAUDE_PLUGIN_ROOT
+fi
+cache="${XDG_CACHE_HOME:-${HOME:-}/.cache}/agentik"
+PYTHONPYCACHEPREFIX="$cache/pycache"
+export PYTHONPYCACHEPREFIX
+if [ -z "${RESPEAK_CACHE_DIR:-}" ]; then
+  RESPEAK_CACHE_DIR="$cache/respeak"
+  export RESPEAK_CACHE_DIR
 fi
 
 usage() {
@@ -51,11 +60,6 @@ EOF
 
 # plug <words>: respeak-plug.py under the probe's interpreter, its cache and bytecode under agentik/.
 plug() {
-  cache="${XDG_CACHE_HOME:-${HOME:-}/.cache}/agentik"
-  if [ -z "${RESPEAK_CACHE_DIR:-}" ]; then
-    RESPEAK_CACHE_DIR="$cache/respeak"
-    export RESPEAK_CACHE_DIR
-  fi
   . "$scripts/respeak-python.sh"
   py="${RESPEAK_PY:-${RESPEAK_PY_STD:-}}"
   if [ -z "$py" ]; then
