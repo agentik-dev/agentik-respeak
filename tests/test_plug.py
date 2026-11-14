@@ -44,11 +44,15 @@ STUB = """#!/bin/sh
 case "$*" in
   "--version") echo "9.9.9 (Claude Code)" ;;
   "plugin marketplace list --json") echo '%s' ;;
-  "plugin list --json") echo '[{"id":"respeak@agentik","version":"0.6.0","scope":"user"}]' ;;
+  "plugin list --json") echo '%s' ;;
   *) exit 1 ;;
 esac
 """
 KNOWN_MARKET = '[{"name":"agentik","source":"github","repo":"agentik-dev/agentik-commons"}]'
+KNOWN_PLUGINS = '[{"id":"respeak@agentik","version":"0.6.0","scope":"user"}]'
+# A fork's install of this very folder, from the made-up marketplace acme-tools.
+FORK_PLUGINS = ('[{"id":"respeak@acme-tools","version":"0.12.6-acme.1","scope":"user","installPath":"%s"}]'
+                % PLUGIN)
 
 
 def load(name, path):
@@ -101,10 +105,10 @@ class Box:
             f.write(text)
         return path
 
-    def stub(self, market=KNOWN_MARKET):
+    def stub(self, market=KNOWN_MARKET, plugins=KNOWN_PLUGINS):
         path = os.path.join(self.bin, "claude")
         with open(path, "w") as f:
-            f.write(STUB % market)
+            f.write(STUB % (market, plugins))
         os.chmod(path, 0o755)
         return self.bin + ":/usr/bin:/bin"
 
@@ -487,6 +491,33 @@ class Doctor(Case):
         mkt = [c for c in obj["checks"] if c["name"] == "marketplace"][0]
         self.assertEqual((mkt["status"], mkt["detail"], mkt["remedy"]), ("warn", "none", MARKET_REMEDY))
 
+    def test_doctor_json_from_a_forks_install(self):
+        path = self.box.stub(plugins=FORK_PLUGINS)
+        p, obj = self.box.json("doctor", "--json", PATH=path)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        plug = [c for c in obj["checks"] if c["name"] == "plugin"][0]
+        self.assertEqual((plug["status"], plug["remedy"]), ("ok", None))
+        manifest = json.load(open(MANIFEST))["version"]
+        self.assertEqual(plug["detail"], "installed from another source 0.12.6, manifest %s" % manifest)
+        self.assertEqual(plug["source"], {"id": "respeak@acme-tools", "marketplace": "acme-tools",
+                                          "folder": PLUGIN, "version": "0.12.6-acme.1"})
+        for key in ("name", "detail", "remedy"):
+            self.assertNotIn("acme", str(plug[key]), key)
+        self.assertEqual([c for c in obj["checks"] if "source" in c], [plug])
+
+    def test_doctor_json_the_suites_ids_keep_their_detail(self):
+        path = self.box.stub()
+        p, obj = self.box.json("doctor", "--json", PATH=path)
+        plug = [c for c in obj["checks"] if c["name"] == "plugin"][0]
+        self.assertTrue(plug["detail"].startswith("respeak@agentik 0.6.0, manifest "), plug)
+        self.assertNotIn("source", plug)
+
+    def test_doctor_text_from_a_forks_install_prints_its_id(self):
+        path = self.box.stub(plugins=FORK_PLUGINS)
+        p = self.box.run("doctor", PATH=path)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertTrue(p.stdout.decode().splitlines()[3].startswith("plugin: respeak@acme-tools 0.12.6-acme.1, "))
+
     def test_doctor_text_is_the_scripts(self):
         path = self.box.stub()
         mine = self.box.run("doctor", PATH=path)
@@ -557,7 +588,7 @@ class WritesUnpinned(unittest.TestCase):
         for d in (home, cache, proj, bin_):
             os.makedirs(d)
         with open(os.path.join(bin_, "claude"), "w") as f:
-            f.write(STUB % KNOWN_MARKET)
+            f.write(STUB % (KNOWN_MARKET, KNOWN_PLUGINS))
         os.chmod(os.path.join(bin_, "claude"), 0o755)
         path = ":".join(([first] if first else []) + [bin_, "/usr/bin", "/bin"])
         env = {"HOME": home, "PATH": path, "TERM": "dumb", "XDG_CACHE_HOME": cache,
