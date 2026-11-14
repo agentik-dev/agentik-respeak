@@ -79,5 +79,71 @@ check "claude: missing" "claude: missing" "$(printf '%s\n' "$out" | sed -n 2p)"
 check "marketplace: none" "marketplace: none" "$(printf '%s\n' "$out" | sed -n 3p)"
 check "plugin: not installed" "plugin: not installed" "$(printf '%s\n' "$out" | sed -n 4p)"
 
+# 4. The plugin line names the entry whose installPath is this plugin's folder, whatever its id.
+P="$REPO_ROOT/plugin"
+L="$work/L"
+ln -s "$P" "$L"
+mkdir -p "$work/other"
+fake_list() { # $1 = a new bin dir, $2 = the plugin list it prints
+  mkdir -p "$1"
+  printf '%s\n' "$2" > "$1/plist.json"
+  cat > "$1/claude" <<SH
+#!/bin/bash
+case "\$*" in
+  "--version") echo "9.9.9 (Claude Code)" ;;
+  "plugin marketplace list --json") echo '[]' ;;
+  "plugin list --json") cat "$1/plist.json" ;;
+  *) exit 1 ;;
+esac
+SH
+  chmod +x "$1/claude"
+}
+run_script() { # $1 = PATH, $2 = the script, the rest = more of the environment
+  p="$1"; s="$2"; shift 2
+  (cd "$work/proj" && env -u CLAUDE_PLUGIN_ROOT PATH="$p" HOME="$work" CLAUDE_CONFIG_DIR="$work/cfg" \
+    CLAUDE_PROJECT_DIR="$work/proj" RESPEAK_PYTHON="$py" RESPEAK_CACHE_DIR="$work/cache" "$@" bash "$s")
+}
+line4() { printf '%s\n' "$1" | sed -n 4p; }
+tail_path="$(dirname "$py"):/usr/bin:/bin"
+fork="plugin: respeak@acme-tools 0.12.6-acme.1, manifest $manifest"
+
+fake_list "$work/fork" '[{"id":"respeak@acme-tools","version":"0.12.6-acme.1","scope":"user","installPath":"'"$P"'"}]'
+out="$(run_script "$work/fork:$tail_path" "$DOCTOR")"; rc=$?
+check "a fork's install, by its installPath" "$fork" "$(line4 "$out")"
+check "exits 0 from a fork's install" 0 "$rc"
+check "six lines from a fork's install" 6 "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
+out="$(run_script "$work/fork:$tail_path" "$L/scripts/respeak-doctor.sh")"
+check "a fork's install, run through a link to it" "$fork" "$(line4 "$out")"
+out="$(run_script "$work/fork:$tail_path" "$DOCTOR" CLAUDE_PLUGIN_ROOT="$L")"
+check "a fork's install, CLAUDE_PLUGIN_ROOT a link to it" "$fork" "$(line4 "$out")"
+
+fake_list "$work/both" '[{"id":"respeak@agentik","version":"0.6.0","scope":"user","installPath":"'"$work/other"'"},{"id":"respeak@acme-tools","version":"0.12.6-acme.1","scope":"user","installPath":"'"$P"'"}]'
+out="$(run_script "$work/both:$tail_path" "$DOCTOR")"
+check "the path decides, not the fixed id" "$fork" "$(line4 "$out")"
+
+fake_list "$work/oldat" '[{"id":"respeak@'"$old_mkt"'","version":"0.6.0","scope":"user","installPath":"'"$P"'"}]'
+out="$(run_script "$work/oldat:$tail_path" "$DOCTOR")"
+check "the old id at this folder keeps its note" "plugin: respeak@$old_mkt 0.6.0, manifest $manifest; old id, use respeak@agentik" "$(line4 "$out")"
+
+# 5. No entry at this folder: the fixed id, then the old id, then not installed; always exit 0.
+fake_list "$work/gone" '[{"id":"respeak@agentik","version":"0.6.0","scope":"user","installPath":"'"$work/gone-folder"'"}]'
+out="$(run_script "$work/gone:$tail_path" "$DOCTOR")"; rc=$?
+check "an installPath that is gone: the fixed id" "plugin: respeak@agentik 0.6.0, manifest $manifest" "$(line4 "$out")"
+check "exits 0 with an installPath that is gone" 0 "$rc"
+fake_list "$work/gonefork" '[{"id":"respeak@acme-tools","version":"0.12.6-acme.1","scope":"user","installPath":"'"$work/gone-folder"'"}]'
+out="$(run_script "$work/gonefork:$tail_path" "$DOCTOR")"; rc=$?
+check "a fork at a folder that is gone: not installed" "plugin: not installed" "$(line4 "$out")"
+check "exits 0 with a fork at a folder that is gone" 0 "$rc"
+fake_list "$work/elsewhere" '[{"id":"respeak@acme-tools","version":"0.12.6-acme.1","scope":"user","installPath":"'"$work/other"'"}]'
+out="$(run_script "$work/elsewhere:$tail_path" "$DOCTOR")"
+check "a fork at another folder: not installed" "plugin: not installed" "$(line4 "$out")"
+fake_list "$work/nojson" 'not json'
+out="$(run_script "$work/nojson:$tail_path" "$DOCTOR")"; rc=$?
+check "a list that is no JSON: not installed" "plugin: not installed" "$(line4 "$out")"
+check "exits 0 with a list that is no JSON" 0 "$rc"
+fake_list "$work/nopath" '[{"id":"respeak@agentik","version":"0.6.0","scope":"user"},{"id":"respeak@acme-tools","version":"1.0.0","installPath":null}]'
+out="$(run_script "$work/nopath:$tail_path" "$DOCTOR")"
+check "entries with no installPath: the fixed id" "plugin: respeak@agentik 0.6.0, manifest $manifest" "$(line4 "$out")"
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

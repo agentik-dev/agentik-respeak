@@ -4,7 +4,9 @@
 #   python: <path> <version> pyyaml=<yes|no>
 #   claude: <version>                                   | claude: missing
 #   marketplace: agentik <source> <path>                | marketplace: none
-#   plugin: respeak@agentik <v>, manifest <v>           | plugin: not installed
+#   plugin: <id> <v>, manifest <v>                      | plugin: not installed
+#     (the entry of `claude plugin list --json` whose installPath is this plugin's
+#     folder, whatever its marketplace; with none there, respeak@agentik, then the old id)
 #   provider: ...        (the line `respeak-config.sh explain --for README.md` prints)
 #   config: <n> unknown keys   (user, project and project-local files; never fatal)
 #
@@ -36,17 +38,18 @@ else
   rc=2
 fi
 
-# json_field <python expression over d> : reads JSON on stdin, prints the result or nothing
+# json_field <python expression over d> [arg] : reads JSON on stdin, prints the result or
+# nothing; the expression reads the arg as sys.argv[2]
 json_field() {
   [ -n "$py" ] || return 0
-  "$py" -c 'import json, sys
+  "$py" -c 'import json, os, sys
 try:
     d = json.load(sys.stdin)
     r = eval(sys.argv[1])
 except Exception:
     r = None
 if r:
-    print(r)' "$1" 2>/dev/null
+    print(r)' "$@" 2>/dev/null
 }
 
 # claude, marketplace, plugin
@@ -55,11 +58,14 @@ if command -v claude >/dev/null 2>&1; then
   echo "claude: ${cver%% *}"
   mlist="$(claude plugin marketplace list --json 2>/dev/null)"
   plist="$(claude plugin list --json 2>/dev/null)"
-  # mkt_of <name>: "<source> <path>" of that marketplace; inst_of <id>: that plugin's version
+  # mkt_of <name>: "<source> <path>" of that marketplace; inst_of <id>: that plugin's version;
+  # inst_at <folder>: "<id> <version>" of the entry installed at that folder, as -ef compares
   mkt_of() { printf '%s' "$mlist" | json_field \
     '" ".join(str(x) for x in next((m.get("source", "?"), m.get("path") or m.get("repo") or m.get("url") or m.get("installLocation", "?")) for m in d if m.get("name") == "'"$1"'"))'; }
   inst_of() { printf '%s' "$plist" | json_field \
     'next(str(p.get("version", "?")) for p in d if p.get("id") == "'"$1"'")'; }
+  inst_at() { printf '%s' "$plist" | json_field \
+    'next("%s %s" % (p["id"], p.get("version", "?")) for p in d if isinstance(p, dict) and p.get("id") and isinstance(p.get("installPath"), str) and os.path.exists(p["installPath"]) and os.path.samefile(p["installPath"], sys.argv[2]))' "$1"; }
   mkt="$(mkt_of "$new_mkt")"
   if [ -n "$mkt" ]; then
     echo "marketplace: $new_mkt $mkt"
@@ -68,11 +74,14 @@ if command -v claude >/dev/null 2>&1; then
     if [ -n "$mkt" ]; then echo "marketplace: $old_mkt $mkt; old, the switch moves it"; else echo "marketplace: none"; fi
   fi
   pid="respeak@$new_mkt"; note=""
-  inst="$(inst_of "$pid")"
-  if [ -z "$inst" ]; then
-    inst="$(inst_of "respeak@$old_mkt")"
-    [ -n "$inst" ] && { pid="respeak@$old_mkt"; note="; old id, use respeak@$new_mkt"; }
+  hit="$(inst_at "$root")"
+  if [ -n "$hit" ]; then
+    pid="${hit%% *}"; inst="${hit#* }"
+  else
+    inst="$(inst_of "$pid")"
+    [ -z "$inst" ] && { inst="$(inst_of "respeak@$old_mkt")"; [ -n "$inst" ] && pid="respeak@$old_mkt"; }
   fi
+  [ -n "$inst" ] && [ "$pid" = "respeak@$old_mkt" ] && note="; old id, use respeak@$new_mkt"
 else
   echo "claude: missing"
   echo "marketplace: none"

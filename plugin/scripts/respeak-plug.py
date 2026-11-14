@@ -34,6 +34,10 @@ NEED_MESSAGE = ("respeak-config: no python3 with PyYAML found (tried python3, /u
                 "brew pythons); set RESPEAK_PYTHON=/path/to/python3 or install PyYAML")
 MARKET_REMEDY = "claude plugin marketplace add agentik-dev/agentik-commons"
 PLUGIN_REMEDY = "claude plugin install respeak@agentik"
+# The suite's id for this plugin. The id from before agentik-r1 carries the line's `; old id`
+# note, read first; any other id on the doctor's `plugin` line is a fork's install, kept out of
+# the check's name, detail and remedy.
+SUITE_ID = "respeak@agentik"
 
 # Help's own lines for each verb (plugin/bin/agentik-respeak --help prints the same words).
 VERBS = (
@@ -552,10 +556,10 @@ def config_main(key):
 # doctor --json
 # --------------------------------------------------------------------------
 
-def check(line):
+def check(line, folder=None):
     name, _, detail = line.partition(":")
     name, detail = name.strip(), detail.strip()
-    status, remedy = "ok", None
+    status, remedy, source = "ok", None, None
     if name == "python" and ("pyyaml=no" in detail or detail.startswith("missing")):
         status, remedy = "fail", "python3 -m pip install pyyaml"
     elif name == "claude" and detail == "missing":
@@ -564,6 +568,17 @@ def check(line):
         status, remedy = "warn", MARKET_REMEDY
     elif name == "plugin" and (detail.startswith("not installed") or "; old id" in detail):
         status, remedy = "warn", PLUGIN_REMEDY
+    elif name == "plugin" and detail.split(" ", 1)[0] != SUITE_ID:
+        # The script found this id by its install folder alone: the detail keeps the release
+        # number and the manifest's version; the id, its marketplace, the folder and the full
+        # version stand under `source`.
+        pid, _, rest = detail.partition(" ")
+        version, _, manifest = rest.partition(", ")
+        m = re.match(r"\d+(?:\.\d+)*", version)
+        detail = "installed from another source %s%s" % (m.group(0) if m else "unknown",
+                                                         ", " + manifest if manifest else "")
+        source = {"id": pid, "marketplace": pid.partition("@")[2], "folder": folder,
+                  "version": version}
     elif name == "provider" and (detail == "none" or detail.startswith("unknown")):
         status = "note"
     elif name == "config":
@@ -572,7 +587,10 @@ def check(line):
             status, remedy = "warn", "agentik respeak config explain"
         elif detail.startswith("unknown"):
             status = "note"
-    return {"name": name, "status": status, "detail": detail, "remedy": remedy}
+    out = {"name": name, "status": status, "detail": detail, "remedy": remedy}
+    if source is not None:
+        out["source"] = source
+    return out
 
 
 def doctor_main():
@@ -585,7 +603,8 @@ def doctor_main():
                            stderr=subprocess.DEVNULL, env=env, timeout=20)
     except subprocess.TimeoutExpired:
         return error("agentik.doctor/1", "timeout", "respeak-doctor.sh did not end inside 20 s")
-    checks = [check(l) for l in p.stdout.decode("utf-8", "replace").splitlines() if l.strip()]
+    folder = env.get("CLAUDE_PLUGIN_ROOT") or ROOT   # the script's own `root`
+    checks = [check(l, folder) for l in p.stdout.decode("utf-8", "replace").splitlines() if l.strip()]
     emit({"schema": "agentik.doctor/1", "ok": True, "tool": TOOL,
           "failed": sum(1 for c in checks if c["status"] == "fail"),
           "warned": sum(1 for c in checks if c["status"] == "warn"),
