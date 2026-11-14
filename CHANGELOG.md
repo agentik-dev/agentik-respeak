@@ -2,6 +2,12 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
+## 0.13.3 (2026-11-13)
+
+- `respeak-doctor.sh` names the installed plugin whose folder it runs from, whatever the marketplace, such as `respeak@acme-tools`. Before, an install from another marketplace read `plugin: not installed`.
+- Outside an install, such as a checkout, the doctor looks up `respeak@agentik` and then the old id, as before.
+- In `agentik-respeak doctor --json`, an install from another marketplace reads `installed from another source` with its version. Its id, marketplace and folder are under the check's `source` key.
+
 ## 0.13.2 (2026-11-13)
 
 - `agentik-respeak`, in the plugin's `bin/`, answers the agentik suite's reads: `describe --json`, `doctor --json` and `describe config --json [KEY]`.
