@@ -34,9 +34,10 @@ NEED_MESSAGE = ("respeak-config: no python3 with PyYAML found (tried python3, /u
                 "brew pythons); set RESPEAK_PYTHON=/path/to/python3 or install PyYAML")
 MARKET_REMEDY = "claude plugin marketplace add agentik-dev/agentik-commons"
 PLUGIN_REMEDY = "claude plugin install respeak@agentik"
-# The suite's own ids for this plugin, today's and the one from before agentik-r1: any other id
-# on the doctor's `plugin` line is a fork's install, kept out of the check's name, detail, remedy.
-SUITE_IDS = ("respeak@agentik", "respeak@claude-code-respeak")
+# The suite's id for this plugin. The id from before agentik-r1 carries the line's `; old id`
+# note, read first; any other id on the doctor's `plugin` line is a fork's install, kept out of
+# the check's name, detail and remedy.
+SUITE_ID = "respeak@agentik"
 
 # Help's own lines for each verb (plugin/bin/agentik-respeak --help prints the same words).
 VERBS = (
@@ -567,7 +568,7 @@ def check(line, folder=None):
         status, remedy = "warn", MARKET_REMEDY
     elif name == "plugin" and (detail.startswith("not installed") or "; old id" in detail):
         status, remedy = "warn", PLUGIN_REMEDY
-    elif name == "plugin" and detail.split(" ", 1)[0] not in SUITE_IDS:
+    elif name == "plugin" and detail.split(" ", 1)[0] != SUITE_ID:
         # The script found this id by its install folder alone: the detail keeps the release
         # number and the manifest's version; the id, its marketplace, the folder and the full
         # version stand under `source`.
