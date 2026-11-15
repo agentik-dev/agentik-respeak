@@ -2,11 +2,22 @@
 
 <img src="assets/icon.svg" alt="" width="56" align="left">
 
-respeak is a Claude Code plugin that renders agent work for a person. One skill and one translator agent write a narrative in ELI5, BLUF or technical mode, in a tone you set by layers. Error messages, security findings, user quotes and numbers with units are never compressed.
+respeak is a Claude Code plugin that rewrites an agent's report for the person who has to read it: `eli5` for a newcomer, `bluf` for a manager, `technical` for a peer.
+Use it when a report is correct and unreadable.
 
-The machine lane left in 0.12.0: the shorthand lexicon, its tooling and the style-gate hook are in git history, last at commit `4cd4ec3`, removed on the owner's word of 2026-10-31.
+Install it in a terminal, then type the second line in a new Claude Code session:
+
+```
+claude plugin marketplace add agentik-dev/agentik-commons; claude plugin install respeak@agentik
+/respeak:respeak bluf README.md
+```
+
+It needs Claude Code 2.1.196 or newer and a python3 with PyYAML, and it works alone. It ships no hooks, so nothing runs until you call it.
+Part of [agentik](https://github.com/agentik-dev): the other tools, and how to leave.
 
 ## What it does
+
+One skill and one translator agent write a narrative in ELI5, BLUF or technical mode, in a tone you set by layers. Error messages, security findings, user quotes and numbers with units are never compressed.
 
 `/respeak:respeak [eli5|bluf|technical] [text or file]` reads the source, resolves the tone for that file, hands both to the `respeak:respeak` agent and measures what comes back against the banned-phrase corpus before you see it. The agent runs in its own context window, so the session that called it pays for one narrative and nothing else.
 
@@ -125,6 +136,8 @@ Status: version `0.13.3`, rendered `2026-10-31`, `313` unittest cases and `6` ba
 | Measure and verify tools, with their suites | Working |
 | Headless renderer: `respeak-render.sh` wraps `claude -p` | Working |
 | Configuration resolver: `respeak-config.sh resolve\|explain\|gate\|validate` | Working |
+
+The machine lane left in 0.12.0: the shorthand lexicon, its tooling and the style-gate hook are in git history, last at commit `4cd4ec3`, removed on the owner's word of 2026-10-31.
 
 See CHANGELOG.md for what each version changed and why.
 
