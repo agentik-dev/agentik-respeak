@@ -43,6 +43,7 @@ test:
 
 lint:
 	$(PYTHON) -m compileall -q scripts plugin/scripts tests
+	$(PYTHON) scripts/readme-top
 	$(PYTHON) -c 'import sys; assert sys.version_info >= (3, 12)'
 	@[ "$$(head -n 1 .python-version)" = "$(VENV)" ] || { echo "lint: .python-version's first line is not $(VENV); update VENV in the Makefile"; exit 2; }
 
