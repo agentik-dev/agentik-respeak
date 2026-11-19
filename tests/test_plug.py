@@ -269,6 +269,16 @@ class Config(Case):
         self.assertIn({"name": "repo", "path": self.box.project_file, "present": True, "travels": False},
                       obj["layers"])
 
+    def test_scope_setting_changes_in_its_entry(self):
+        os.makedirs(os.path.join(self.box.proj, "docs"), exist_ok=True)
+        self.box.write(self.box.project_file, "scopes:\n  - paths: [\"docs/**\"]\n    narrative:\n      profile: exec\n")
+        obj = self.config(cwd=os.path.join(self.box.proj, "docs"))
+        s = self.setting(obj, "narrative.default_mode")
+        self.assertEqual((s["value"], s["change"]["path"]), ("bluf", self.box.project_file))
+        self.assertEqual(s["change"]["block"],
+                         "scopes:\n  - paths: [\"docs/**\"]\n    narrative:\n      default_mode: bluf")
+        self.assertIn("scopes[0] entry", s["change"]["note"])
+
     def test_project_and_folder(self):
         self.box.write(self.box.project_file, "gate:\n  fail_on: warn\n")
         folder = self.box.write(os.path.join(self.box.proj, "docs", ".respeak.yaml"), "narrative:\n  tech_level: 1\n")
