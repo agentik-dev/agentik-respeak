@@ -2,6 +2,10 @@
 
 Versions follow `.claude-plugin/plugin.json`. Dates are commit dates.
 
+## 0.13.4 (2026-11-19)
+
+- In `agentik-respeak describe config --json`, a setting a `scopes:` entry sets gets a `change.block` inside that entry, named by its `paths`. Before, the block sat at the file's top level, where the scope still wins.
+
 ## 0.13.3 (2026-11-13)
 
 - `respeak-doctor.sh` names the installed plugin whose folder it runs from, whatever the marketplace, such as `respeak@acme-tools`. Before, an install from another marketplace read `plugin: not installed`.

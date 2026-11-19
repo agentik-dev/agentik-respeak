@@ -452,12 +452,21 @@ class Reader:
         else:
             path = self.project.path if self.project else None
         note = "--set %s=VALUE changes it for one render." % key
-        scope = split_label(self.res.origins.get(key) or "")[1]
+        base, scope, _ = split_label(self.res.origins.get(key) or "")
+        text = block(key, value)
         if scope is not None and path == source["path"]:
-            note = "The value in force is set in that file's scopes[%d] entry; %s" % (scope, note)
+            # the scope wins over its file's top level, so the block sits in that entry
+            data = getattr(self.by_label.get(base), "data", None)
+            entries = data.get("scopes") if isinstance(data, dict) else None
+            entry = entries[scope] if isinstance(entries, list) and scope < len(entries) else None
+            paths = entry.get("paths") if isinstance(entry, dict) else None
+            head = "  - paths: %s\n    " % json.dumps(paths, ensure_ascii=False) if paths is not None else "  - "
+            text = "scopes:\n" + head + text.replace("\n", "\n    ")
+            note = ("The value in force is set in that file's scopes[%d] entry, which wins over its top level; "
+                    "edit the key in that entry; %s" % (scope, note))
         if path is None:
             note = "Only a project's file sets it and none is found here; " + note
-        return {"kind": "edit", "command": None, "path": path, "block": block(key, value), "note": note}
+        return {"kind": "edit", "command": None, "path": path, "block": text, "note": note}
 
     def settings(self):
         rc, out = self.rc, []

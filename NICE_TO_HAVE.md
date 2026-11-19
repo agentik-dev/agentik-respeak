@@ -6,7 +6,6 @@ Findings that block nothing, one row each, in hq design/05 §2's table; `scripts
 
 | id | level | area | finding | evidence | from |
 |---|---|---|---|---|---|
-| n1 | S3 | `plugin/scripts/respeak-plug.py` | A setting set by a `scopes:` entry gets a `change.block` for the file's top level, where the scope still wins; the note names the entry | a project `scopes[0]` setting `narrative.profile: exec` for `docs/**`, read from `docs/`: the block is `narrative:\n  default_mode: bluf` | ak9-plug-respeak |
 | n2 | S4 | `plugin/scripts/respeak-plug.py` | An empty mapping on a leaf is printed as the setting's value, against the contract's "a mapping is never a value": type `integer`, source `default` with line null, and the suite counts it as changed | a user file `narrative:\n  tech_level: {}`: `narrative.tech_level` reads `{}`, source `default`, line null | ak9-plug-respeak review 1 (R1-F3) |
 | n3 | S4 | `plugin/scripts/respeak-plug.py` | A list where a lower layer has a mapping is warned `unknown`, the wrong reason; `explain` says it is ignored as a list | a user file `narrative: [1, 2]`: one `narrative` `unknown` row at line 1 | ak9-plug-respeak review 1 (N1) |
 | n4 | S4 | `plugin/scripts/respeak-plug.py` | A key reached through a YAML merge key (`<<: *b`) gets line null, though its layer is a text file | a user file whose `narrative:` holds `<<: *b` from an anchored mapping that sets `tech_level`: `narrative.tech_level` source line null | ak9-plug-respeak review 1 (N2) |
